@@ -1,0 +1,7 @@
+services:
+  cache-service:
+    build:
+      context: .
+    container_name: cache-service
+    ports:
+      - "50051:50051"
