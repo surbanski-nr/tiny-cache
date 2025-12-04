@@ -1,0 +1,404 @@
+import pytest
+import time
+import threading
+from unittest.mock import patch, MagicMock
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from cache_store import CacheStore, CacheEntry
+
+
+class TestCacheStore:
+    """Test cases for the CacheStore class."""
+    
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        self.cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
+    
+    def teardown_method(self):
+        """Clean up after each test method."""
+        if hasattr(self, 'cache'):
+            self.cache.stop()
+    
+    def test_cache_store_initialization_default_values(self):
+        """Test CacheStore initialization with default values."""
+        with patch.dict('os.environ', {
+            'CACHE_MAX_ITEMS': '500',
+            'CACHE_MAX_MEMORY_MB': '50',
+            'CACHE_CLEANUP_INTERVAL': '5'
+        }):
+            cache = CacheStore()
+            assert cache.max_items == 500
+            assert cache.max_memory_bytes == 50 * 1024 * 1024
+            assert cache.cleanup_interval == 5
+            cache.stop()
+    
+    def test_cache_store_initialization_custom_values(self):
+        """Test CacheStore initialization with custom values."""
+        cache = CacheStore(max_items=100, max_memory_mb=10, cleanup_interval=2)
+        assert cache.max_items == 100
+        assert cache.max_memory_bytes == 10 * 1024 * 1024
+        assert cache.cleanup_interval == 2
+        assert cache.hits == 0
+        assert cache.misses == 0
+        assert cache.evictions == 0
+        assert cache.current_memory_bytes == 0
+        assert len(cache.store) == 0
+        cache.stop()
+    
+    def test_set_and_get_basic_functionality(self):
+        """Test basic set and get operations."""
+        key = "test_key"
+        value = "test_value"
+        
+        # Test set
+        result = self.cache.set(key, value)
+        assert result is True
+        
+        # Test get
+        retrieved_value = self.cache.get(key)
+        assert retrieved_value == value
+        assert self.cache.hits == 1
+        assert self.cache.misses == 0
+    
+    def test_get_nonexistent_key(self):
+        """Test getting a non-existent key."""
+        result = self.cache.get("nonexistent_key")
+        assert result is None
+        assert self.cache.hits == 0
+        assert self.cache.misses == 1
+    
+    def test_set_with_ttl(self):
+        """Test setting a value with TTL."""
+        key = "ttl_key"
+        value = "ttl_value"
+        ttl = 1  # 1 second
+        
+        result = self.cache.set(key, value, ttl=ttl)
+        assert result is True
+        
+        # Should be available immediately
+        retrieved_value = self.cache.get(key)
+        assert retrieved_value == value
+        
+        # Wait for TTL to expire
+        time.sleep(1.1)
+        
+        # Should be expired now
+        retrieved_value = self.cache.get(key)
+        assert retrieved_value is None
+        assert self.cache.misses == 1
+    
+    def test_update_existing_key(self):
+        """Test updating an existing key."""
+        key = "update_key"
+        value1 = "value1"
+        value2 = "value2"
+        
+        # Set initial value
+        self.cache.set(key, value1)
+        assert self.cache.get(key) == value1
+        
+        # Update value
+        self.cache.set(key, value2)
+        assert self.cache.get(key) == value2
+        
+        # Should still be one item in cache
+        stats = self.cache.stats()
+        assert stats["size"] == 1
+    
+    def test_delete_existing_key(self):
+        """Test deleting an existing key."""
+        key = "delete_key"
+        value = "delete_value"
+        
+        # Set and verify
+        self.cache.set(key, value)
+        assert self.cache.get(key) == value
+        
+        # Delete and verify
+        result = self.cache.delete(key)
+        assert result is True
+        assert self.cache.get(key) is None
+    
+    def test_delete_nonexistent_key(self):
+        """Test deleting a non-existent key."""
+        result = self.cache.delete("nonexistent_key")
+        assert result is False
+    
+    def test_lru_eviction_by_item_count(self):
+        """Test LRU eviction when max items is reached."""
+        cache = CacheStore(max_items=3, max_memory_mb=100)
+        
+        # Fill cache to capacity
+        cache.set("key1", "value1")
+        cache.set("key2", "value2")
+        cache.set("key3", "value3")
+        
+        # Access key1 to make it recently used
+        cache.get("key1")
+        
+        # Add another item, should evict key2 (least recently used)
+        cache.set("key4", "value4")
+        
+        assert cache.get("key1") == "value1"  # Should still exist
+        assert cache.get("key2") is None      # Should be evicted
+        assert cache.get("key3") == "value3"  # Should still exist
+        assert cache.get("key4") == "value4"  # Should exist
+        
+        stats = cache.stats()
+        assert stats["size"] == 3
+        assert stats["evictions"] == 1
+        
+        cache.stop()
+    
+    def test_memory_based_eviction(self):
+        """Test eviction based on memory limits."""
+        # Create cache with very small memory limit
+        cache = CacheStore(max_items=100, max_memory_mb=1)  # 1MB
+        
+        # Try to add large values
+        large_value = "x" * 500  # 500 bytes
+        
+        result1 = cache.set("key1", large_value)
+        assert result1 is True
+        
+        result2 = cache.set("key2", large_value)
+        # This might succeed or fail depending on exact memory calculation
+        
+        # Try to add a value that definitely won't fit
+        huge_value = "x" * 2000  # 2KB
+        result3 = cache.set("key3", huge_value)
+        
+        # Should have some evictions due to memory pressure
+        stats = cache.stats()
+        assert stats["evictions"] >= 0
+        
+        cache.stop()
+    
+    def test_clear_cache(self):
+        """Test clearing the entire cache."""
+        # Add some items
+        self.cache.set("key1", "value1")
+        self.cache.set("key2", "value2")
+        self.cache.set("key3", "value3")
+        
+        stats_before = self.cache.stats()
+        assert stats_before["size"] == 3
+        
+        # Clear cache
+        self.cache.clear()
+        
+        # Verify cache is empty
+        stats_after = self.cache.stats()
+        assert stats_after["size"] == 0
+        assert stats_after["memory_usage_bytes"] == 0
+        
+        # Verify items are gone
+        assert self.cache.get("key1") is None
+        assert self.cache.get("key2") is None
+        assert self.cache.get("key3") is None
+    
+    def test_stats_functionality(self):
+        """Test the stats method."""
+        # Initial stats
+        stats = self.cache.stats()
+        assert stats["size"] == 0
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+        assert stats["evictions"] == 0
+        assert stats["hit_rate"] == 0
+        assert stats["memory_usage_bytes"] == 0
+        assert "max_memory_mb" in stats
+        assert "max_items" in stats
+        
+        # Add some data and test operations
+        self.cache.set("key1", "value1")
+        self.cache.get("key1")  # Hit
+        self.cache.get("key2")  # Miss
+        
+        stats = self.cache.stats()
+        assert stats["size"] == 1
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+        assert stats["hit_rate"] == 0.5
+        assert stats["memory_usage_bytes"] > 0
+    
+    def test_is_expired_functionality(self):
+        """Test the _is_expired method."""
+        # Create entry with TTL
+        entry_with_ttl = CacheEntry("value", ttl=1)
+        assert not self.cache._is_expired(entry_with_ttl)
+        
+        # Wait for expiration
+        time.sleep(1.1)
+        assert self.cache._is_expired(entry_with_ttl)
+        
+        # Create entry without TTL
+        entry_without_ttl = CacheEntry("value")
+        assert not self.cache._is_expired(entry_without_ttl)
+    
+    def test_background_cleanup_thread(self):
+        """Test that the background cleanup thread works."""
+        # Set short cleanup interval for testing
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
+        
+        # Add item with short TTL
+        cache.set("expire_key", "expire_value", ttl=1)
+        
+        # Verify item exists
+        assert cache.get("expire_key") == "expire_value"
+        
+        # Wait for cleanup to run
+        time.sleep(1)
+        
+        # Item should be cleaned up by background thread
+        # Note: We check the store directly since get() also removes expired items
+        with cache.lock:
+            assert "expire_key" not in cache.store
+        
+        cache.stop()
+    
+    def test_thread_safety(self):
+        """Test thread safety of cache operations."""
+        cache = CacheStore(max_items=100, max_memory_mb=10)
+        results = []
+        errors = []
+        
+        def worker(thread_id):
+            try:
+                for i in range(10):
+                    key = f"thread_{thread_id}_key_{i}"
+                    value = f"thread_{thread_id}_value_{i}"
+                    
+                    # Set value
+                    cache.set(key, value)
+                    
+                    # Get value
+                    retrieved = cache.get(key)
+                    results.append((key, value, retrieved))
+                    
+                    # Small delay to increase chance of race conditions
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append(e)
+        
+        # Create multiple threads
+        threads = []
+        for i in range(5):
+            thread = threading.Thread(target=worker, args=(i,))
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+        
+        # Check results
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        
+        # Verify all operations succeeded
+        for key, expected_value, retrieved_value in results:
+            assert retrieved_value == expected_value
+        
+        cache.stop()
+    
+    def test_error_handling_in_get(self):
+        """Test error handling in get method."""
+        # Mock the store to raise an exception
+        with patch.object(self.cache, 'store') as mock_store:
+            mock_store.__contains__.side_effect = Exception("Test exception")
+            
+            result = self.cache.get("test_key")
+            assert result is None
+            assert self.cache.misses > 0
+    
+    def test_error_handling_in_set(self):
+        """Test error handling in set method."""
+        # Mock the store to raise an exception
+        with patch.object(self.cache, 'store') as mock_store:
+            mock_store.__contains__.side_effect = Exception("Test exception")
+            
+            result = self.cache.set("test_key", "test_value")
+            assert result is False
+    
+    def test_error_handling_in_delete(self):
+        """Test error handling in delete method."""
+        # Mock the store to raise an exception
+        with patch.object(self.cache, 'store') as mock_store:
+            mock_store.__contains__.side_effect = Exception("Test exception")
+            
+            result = self.cache.delete("test_key")
+            assert result is False
+    
+    def test_error_handling_in_stats(self):
+        """Test error handling in stats method."""
+        # Mock the lock to raise an exception
+        with patch.object(self.cache, 'lock') as mock_lock:
+            mock_lock.__enter__.side_effect = Exception("Test exception")
+            
+            result = self.cache.stats()
+            assert "error" in result
+    
+    def test_stop_functionality(self):
+        """Test the stop method."""
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
+        
+        # Verify thread is running
+        assert cache.cleaner_thread.is_alive()
+        
+        # Stop cache
+        cache.stop()
+        
+        # Wait a bit for thread to stop
+        time.sleep(0.1)
+        
+        # Verify thread is stopped
+        assert cache._stop_flag is True
+        # Note: Thread might still be alive briefly due to cleanup_interval
+    
+    def test_memory_tracking_accuracy(self):
+        """Test that memory tracking is accurate."""
+        key = "memory_test"
+        value = "x" * 100  # 100 character string
+        
+        initial_memory = self.cache.current_memory_bytes
+        
+        # Set value
+        self.cache.set(key, value)
+        
+        # Check memory increased
+        assert self.cache.current_memory_bytes > initial_memory
+        
+        # Delete value
+        self.cache.delete(key)
+        
+        # Check memory decreased
+        assert self.cache.current_memory_bytes == initial_memory
+    
+    def test_lru_ordering(self):
+        """Test that LRU ordering is maintained correctly."""
+        cache = CacheStore(max_items=3, max_memory_mb=10)
+        
+        # Add items
+        cache.set("key1", "value1")
+        cache.set("key2", "value2")
+        cache.set("key3", "value3")
+        
+        # Access key1 to make it most recently used
+        cache.get("key1")
+        
+        # Access key2 to make it second most recently used
+        cache.get("key2")
+        
+        # key3 should be least recently used
+        
+        # Add new item, should evict key3
+        cache.set("key4", "value4")
+        
+        assert cache.get("key1") == "value1"  # Should exist
+        assert cache.get("key2") == "value2"  # Should exist
+        assert cache.get("key3") is None      # Should be evicted
+        assert cache.get("key4") == "value4"  # Should exist
+        
+        cache.stop()

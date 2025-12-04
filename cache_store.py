@@ -1,67 +1,159 @@
 import time
+import sys
+import os
 from threading import Lock, Thread
+from collections import OrderedDict
+from typing import Optional, Dict, Any
 
 class CacheEntry:
-    def __init__(self, value, ttl=None):
+    def __init__(self, value: Any, ttl: Optional[int] = None):
         self.value = value
         self.ttl = ttl
         self.created_at = time.time()
-        self.last_access = time.time()  # for LRU
+        self.size_bytes = sys.getsizeof(value)
 
 class CacheStore:
-    def __init__(self, max_items=1000, cleanup_interval=10):
-        self.store = {}
-        self.max_items = max_items
+    def __init__(self, max_items: Optional[int] = None, max_memory_mb: Optional[int] = None, cleanup_interval: Optional[int] = None):
+        self.max_items = max_items or int(os.getenv('CACHE_MAX_ITEMS', '1000'))
+        self.max_memory_bytes = (max_memory_mb or int(os.getenv('CACHE_MAX_MEMORY_MB', '100'))) * 1024 * 1024
+        self.cleanup_interval = cleanup_interval or int(os.getenv('CACHE_CLEANUP_INTERVAL', '10'))
+        
+        self.store: OrderedDict[str, CacheEntry] = OrderedDict()
+        self.current_memory_bytes = 0
         self.hits = 0
         self.misses = 0
+        self.evictions = 0
         self.lock = Lock()
-        self.cleanup_interval = cleanup_interval
 
-        # background thread cleaning expired records
         self._stop_flag = False
         self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
         self.cleaner_thread.start()
 
-    def _is_expired(self, entry: CacheEntry):
-        return entry.ttl and (time.time() - entry.created_at > entry.ttl)
+    def _is_expired(self, entry: CacheEntry) -> bool:
+        return bool(entry.ttl and (time.time() - entry.created_at > entry.ttl))
 
-    def get(self, key):
-        with self.lock:
-            entry = self.store.get(key)
-            if not entry or self._is_expired(entry):
-                self.misses += 1
-                self.store.pop(key, None)
-                return None
-            self.hits += 1
-            entry.last_access = time.time()
-            return entry.value
-
-    def set(self, key, value, ttl=None):
-        with self.lock:
-            if len(self.store) >= self.max_items:
-                self._evict_lru()
-            self.store[key] = CacheEntry(value, ttl)
-
-    def delete(self, key):
-        with self.lock:
-            self.store.pop(key, None)
-
-    def _evict_lru(self):
-        oldest_key = min(self.store.items(), key=lambda kv: kv[1].last_access)[0]
-        self.store.pop(oldest_key)
-
-    def stats(self):
-        with self.lock:
-            return {"size": len(self.store), "hits": self.hits, "misses": self.misses}
-
-    def _background_cleanup(self):
-        while not self._stop_flag:
-            time.sleep(self.cleanup_interval)
+    def get(self, key: str) -> Optional[Any]:
+        try:
             with self.lock:
-                expired_keys = [k for k, v in self.store.items() if self._is_expired(v)]
-                for k in expired_keys:
-                    self.store.pop(k)
+                if key not in self.store:
+                    self.misses += 1
+                    return None
+                
+                entry = self.store[key]
+                if self._is_expired(entry):
+                    self.misses += 1
+                    self._remove_entry(key)
+                    return None
+                
+                self.store.move_to_end(key)
+                self.hits += 1
+                return entry.value
+        except Exception as e:
+            print(f"Error in cache get: {e}")
+            self.misses += 1
+            return None
 
-    def stop(self):
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+        try:
+            with self.lock:
+                entry = CacheEntry(value, ttl)
+                
+                if key in self.store:
+                    old_entry = self.store[key]
+                    self.current_memory_bytes -= old_entry.size_bytes
+                
+                if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
+                    if not self._evict_to_fit(entry.size_bytes):
+                        return False
+                
+                while len(self.store) >= self.max_items:
+                    if not self._evict_lru():
+                        return False
+                
+                self.store[key] = entry
+                self.current_memory_bytes += entry.size_bytes
+                self.store.move_to_end(key)
+                return True
+        except Exception as e:
+            print(f"Error in cache set: {e}")
+            return False
+
+    def delete(self, key: str) -> bool:
+        try:
+            with self.lock:
+                if key in self.store:
+                    self._remove_entry(key)
+                    return True
+                return False
+        except Exception as e:
+            print(f"Error in cache delete: {e}")
+            return False
+
+    def _remove_entry(self, key: str) -> None:
+        """Remove entry and update memory tracking"""
+        if key in self.store:
+            entry = self.store.pop(key)
+            self.current_memory_bytes -= entry.size_bytes
+
+    def _evict_lru(self) -> bool:
+        """Evict least recently used item (O(1) operation)"""
+        if not self.store:
+            return False
+        
+        lru_key = next(iter(self.store))
+        self._remove_entry(lru_key)
+        self.evictions += 1
+        return True
+
+    def _evict_to_fit(self, required_bytes: int) -> bool:
+        """Evict items until we have enough space"""
+        while (self.current_memory_bytes + required_bytes > self.max_memory_bytes and
+               self.store):
+            if not self._evict_lru():
+                return False
+        return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
+
+    def stats(self) -> Dict[str, Any]:
+        try:
+            with self.lock:
+                return {
+                    "size": len(self.store),
+                    "hits": self.hits,
+                    "misses": self.misses,
+                    "evictions": self.evictions,
+                    "hit_rate": self.hits / (self.hits + self.misses) if (self.hits + self.misses) > 0 else 0,
+                    "memory_usage_bytes": self.current_memory_bytes,
+                    "memory_usage_mb": round(self.current_memory_bytes / (1024 * 1024), 2),
+                    "max_memory_mb": round(self.max_memory_bytes / (1024 * 1024), 2),
+                    "max_items": self.max_items
+                }
+        except Exception as e:
+            print(f"Error getting stats: {e}")
+            return {"error": str(e)}
+
+    def _background_cleanup(self) -> None:
+        """Background thread to clean up expired entries"""
+        while not self._stop_flag:
+            try:
+                time.sleep(self.cleanup_interval)
+                with self.lock:
+                    expired_keys = [k for k, v in self.store.items() if self._is_expired(v)]
+                    for k in expired_keys:
+                        self._remove_entry(k)
+            except Exception as e:
+                print(f"Error in background cleanup: {e}")
+
+    def clear(self) -> None:
+        """Clear all cache entries"""
+        try:
+            with self.lock:
+                self.store.clear()
+                self.current_memory_bytes = 0
+        except Exception as e:
+            print(f"Error clearing cache: {e}")
+
+    def stop(self) -> None:
+        """Stop the cache and cleanup background thread"""
         self._stop_flag = True
-        self.cleaner_thread.join()
+        if self.cleaner_thread.is_alive():
+            self.cleaner_thread.join(timeout=5)
