@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tiny-cache
+  labels:
+    app: tiny-cache
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tiny-cache
+  template:
+    metadata:
+      labels:
+        app: tiny-cache
+    spec:
+      containers:
+      - name: tiny-cache
+        image: tiny-cache:latest
+        ports:
+        - containerPort: 50051
+          name: grpc
+          protocol: TCP
+        - containerPort: 8080
+          name: http-health
+          protocol: TCP
+        env:
+        - name: CACHE_LOG_LEVEL
+          value: "INFO"
+        - name: CACHE_MAX_ITEMS
+          value: "10000"
+        - name: CACHE_MAX_MEMORY_MB
+          value: "512"
+        - name: CACHE_HEALTH_PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        # Liveness probe - checks if container is alive
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Readiness probe - checks if container is ready to serve traffic
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # Startup probe - gives container time to start up
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiny-cache-service
+  labels:
+    app: tiny-cache
+spec:
+  selector:
+    app: tiny-cache
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+    protocol: TCP
+  - name: http-health
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+---
+# Optional: ServiceMonitor for Prometheus monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tiny-cache-monitor
+  labels:
+    app: tiny-cache
+spec:
+  selector:
+    matchLabels:
+      app: tiny-cache
+  endpoints:
+  - port: http-health
+    path: /health
+    interval: 30s
