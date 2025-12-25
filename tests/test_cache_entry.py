@@ -128,7 +128,7 @@ class TestCacheEntry:
         assert entry.ttl is None
         assert entry.size_bytes == sys.getsizeof(None)
     
-    def test_cache_entry_immutable_after_creation(self):
+    def test_cache_entry_mutable_after_creation(self):
         """Test that cache entry properties can be modified after creation."""
         entry = CacheEntry("test", 60)
         original_created_at = entry.created_at
