@@ -3,15 +3,15 @@ import sys
 import os
 from threading import Lock, Thread, Event
 from collections import OrderedDict
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 
 MAX_KEY_LENGTH = 256
 
 class CacheEntry:
-    def __init__(self, value: Any, ttl: Optional[int] = None):
+    def __init__(self, value: Any, ttl: Optional[int] = None, created_at: Optional[float] = None):
         self.value = value
         self.ttl = None if ttl is not None and ttl <= 0 else ttl
-        self.created_at = time.monotonic()
+        self.created_at = created_at if created_at is not None else time.monotonic()
         self.size_bytes = sys.getsizeof(value)
 
 class CacheStore:
@@ -21,6 +21,7 @@ class CacheStore:
         max_memory_mb: Optional[int] = None,
         cleanup_interval: Optional[int] = None,
         max_value_bytes: Optional[int] = None,
+        clock: Optional[Callable[[], float]] = None,
     ):
         def _resolve_int(
             arg_value: Optional[int],
@@ -62,6 +63,7 @@ class CacheStore:
         self.misses = 0
         self.evictions = 0
         self.lock = Lock()
+        self._clock = clock or time.monotonic
 
         self._stop_event = Event()
         self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
@@ -70,7 +72,7 @@ class CacheStore:
     def _is_expired(self, entry: CacheEntry) -> bool:
         if entry.ttl is None:
             return False
-        return (time.monotonic() - entry.created_at) > entry.ttl
+        return (self._clock() - entry.created_at) > entry.ttl
 
     def _validate_key(self, key: str) -> None:
         if not isinstance(key, str):
@@ -104,7 +106,7 @@ class CacheStore:
             if old_entry is not None:
                 self.current_memory_bytes -= old_entry.size_bytes
 
-            entry = CacheEntry(value, ttl)
+            entry = CacheEntry(value, ttl, created_at=self._clock())
 
             if entry.size_bytes > self.max_value_bytes:
                 if old_entry is not None:
