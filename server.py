@@ -366,7 +366,7 @@ async def serve():
         asyncio.create_task(server.stop(grace=5))
         asyncio.create_task(health_runner.cleanup())
     
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
     
