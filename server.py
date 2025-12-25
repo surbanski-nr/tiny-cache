@@ -101,9 +101,9 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("GET", request.key, client_addr, duration_ms, "ERROR")
-            logger.error(f"Error in Get operation for key '{request.key}': {e}")
+            logger.exception(f"Error in Get operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal error: {str(e)}")
+            context.set_details("Internal server error")
             return cache_pb2.CacheValue(found=False)
 
     async def Set(self, request, context):
@@ -144,9 +144,9 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("SET", request.key, client_addr, duration_ms, "ERROR")
-            logger.error(f"Error in Set operation for key '{request.key}': {e}")
+            logger.exception(f"Error in Set operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal error: {str(e)}")
+            context.set_details("Internal server error")
             return cache_pb2.CacheResponse()
 
     async def Delete(self, request, context):
@@ -175,9 +175,9 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("DELETE", request.key, client_addr, duration_ms, "ERROR")
-            logger.error(f"Error in Delete operation for key '{request.key}': {e}")
+            logger.exception(f"Error in Delete operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal error: {str(e)}")
+            context.set_details("Internal server error")
             return cache_pb2.CacheResponse()
 
     async def Stats(self, request, context):
@@ -205,9 +205,9 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
-            logger.error(f"Error in Stats operation: {e}")
+            logger.exception(f"Error in Stats operation: {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal error: {str(e)}")
+            context.set_details("Internal server error")
             return cache_pb2.CacheStats()
 
 class ConnectionInterceptor(grpc.aio.ServerInterceptor):
