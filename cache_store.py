@@ -173,9 +173,17 @@ class CacheStore:
             try:
                 time.sleep(self.cleanup_interval)
                 with self.lock:
-                    expired_keys = [k for k, v in self.store.items() if self._is_expired(v)]
+                    items = list(self.store.items())
+
+                expired_keys = [k for k, v in items if self._is_expired(v)]
+                if not expired_keys:
+                    continue
+
+                with self.lock:
                     for k in expired_keys:
-                        self._remove_entry(k)
+                        entry = self.store.get(k)
+                        if entry is not None and self._is_expired(entry):
+                            self._remove_entry(k)
             except Exception as e:
                 print(f"Error in background cleanup: {e}")
 
