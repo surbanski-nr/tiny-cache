@@ -163,6 +163,13 @@ class CacheStore:
         return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
 
     def stats(self) -> Dict[str, Any]:
+        """
+        Return cache stats.
+
+        Note: memory usage is best-effort and currently accounts only for
+        `sys.getsizeof(value)` per entry (it does not include key/object/dict
+        overhead).
+        """
         with self.lock:
             return {
                 "size": len(self.store),
