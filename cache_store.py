@@ -185,6 +185,9 @@ class CacheStore:
             with self.lock:
                 self.store.clear()
                 self.current_memory_bytes = 0
+                self.hits = 0
+                self.misses = 0
+                self.evictions = 0
         except Exception as e:
             print(f"Error clearing cache: {e}")
 
