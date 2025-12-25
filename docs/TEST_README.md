@@ -6,7 +6,7 @@ This document provides comprehensive information about testing the tiny-cache pr
 
 The tiny-cache project includes comprehensive test coverage for:
 - **Unit Tests**: Individual components (CacheEntry, CacheStore)
-- **Integration Tests**: Not currently implemented for the gRPC/HTTP layers
+- **Integration Tests**: gRPC + HTTP adapter behavior (in-process servers)
 
 ## Test Structure
 
@@ -14,7 +14,10 @@ The tiny-cache project includes comprehensive test coverage for:
 ├── tests/                       # Test directory
 │   ├── __init__.py             # Python package initialization
 │   ├── test_cache_entry.py     # Unit tests for CacheEntry class (12 tests)
-│   └── test_cache_store.py     # Unit tests for CacheStore class (22 tests)
+│   ├── test_cache_store.py     # Unit tests for CacheStore class (22 tests)
+│   └── integration/            # Integration tests (gRPC/HTTP/TLS/health)
+│       ├── fixtures/           # Test fixtures (e.g., TLS certs)
+│       └── test_*.py           # Integration test modules
 ├── pytest.ini                  # Pytest configuration
 ├── requirements.txt             # Production dependencies
 ├── requirements-dev.txt         # Development/testing dependencies
@@ -42,14 +45,14 @@ pip install -r requirements-dev.txt
 
 ### 2. Generate Protobuf Files (Optional)
 
-For full integration tests, generate the protobuf files:
+Generate protobuf stubs for gRPC tests:
 
 ```bash
 # Generate protobuf files
 make gen
 ```
 
-Note: the generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are checked into this repo.
+Note: the generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are not tracked in git and must be generated locally.
 
 ## Running Tests
 
@@ -91,6 +94,14 @@ pytest tests/test_cache_store.py -v
 # Run both test files
 python run_tests.py
 ```
+
+`python run_tests.py` defaults to unit tests. For integration tests:
+
+```bash
+python run_tests.py --integration
+```
+
+To run unit + integration tests together, run `pytest` (or run the unit and integration commands separately).
 
 ### Run Specific Test Methods
 
@@ -135,7 +146,11 @@ Tests are organized using pytest markers:
 
 ### gRPC Service Tests
 
-Not currently implemented.
+Integration tests cover:
+
+- gRPC Get/Set/Delete/Stats behavior and status codes
+- gRPC health checking service (`grpc.health.v1.Health`)
+- gRPC server-side TLS
 
 ## Expected Test Results
 
@@ -143,7 +158,7 @@ When running tests, you should see output similar to:
 
 ```
 ================================ test session starts ================================
-collected 45 items
+collected ... items
 
 test_cache_entry.py::TestCacheEntry::test_cache_entry_creation_with_string_value PASSED
 test_cache_entry.py::TestCacheEntry::test_cache_entry_creation_with_ttl PASSED
@@ -151,7 +166,7 @@ test_cache_entry.py::TestCacheEntry::test_cache_entry_creation_with_ttl PASSED
 test_cache_store.py::TestCacheStore::test_set_and_get_basic_functionality PASSED
 test_cache_store.py::TestCacheStore::test_get_nonexistent_key PASSED
 
-================================ 45 passed in 2.34s ================================
+================================ ... passed in ...s ================================
 ```
 
 ## Troubleshooting
