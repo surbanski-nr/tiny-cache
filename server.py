@@ -1,9 +1,11 @@
 import asyncio
+import contextvars
 import os
 import signal
 import logging
 import time
 import json
+import uuid
 from dataclasses import dataclass
 from aiohttp import web
 import grpc
@@ -15,6 +17,15 @@ from cache_store import CacheStore, MAX_KEY_LENGTH
 from config import get_env_int
 
 logger = logging.getLogger(__name__)
+
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_var.get()
+        return True
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -30,8 +41,10 @@ class Settings:
 def configure_logging(log_level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s - %(name)s - %(levelname)s - %(request_id)s - %(message)s",
     )
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(RequestIdFilter())
 
 
 def load_settings() -> Settings:
@@ -80,8 +93,19 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             logger.debug("Unable to read client peer from context", exc_info=True)
             return "unknown"
 
+    def _get_request_id(self, context) -> str:
+        try:
+            for key, value in context.invocation_metadata():
+                if key.lower() == "x-request-id" and value:
+                    return value
+        except Exception:
+            logger.debug("Unable to read request id from metadata", exc_info=True)
+        return uuid.uuid4().hex
+
     async def Get(self, request, context):
         start_time = time.monotonic()
+        request_id = self._get_request_id(context)
+        token = request_id_var.set(request_id)
         client_addr = self._get_client_address(context)
         
         try:
@@ -118,11 +142,15 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             self._log_request("GET", request.key, client_addr, duration_ms, "ERROR")
             logger.exception(f"Error in Get operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details("Internal server error")
+            context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheValue(found=False)
+        finally:
+            request_id_var.reset(token)
 
     async def Set(self, request, context):
         start_time = time.monotonic()
+        request_id = self._get_request_id(context)
+        token = request_id_var.set(request_id)
         client_addr = self._get_client_address(context)
         
         try:
@@ -161,11 +189,15 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             self._log_request("SET", request.key, client_addr, duration_ms, "ERROR")
             logger.exception(f"Error in Set operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details("Internal server error")
+            context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheResponse()
+        finally:
+            request_id_var.reset(token)
 
     async def Delete(self, request, context):
         start_time = time.monotonic()
+        request_id = self._get_request_id(context)
+        token = request_id_var.set(request_id)
         client_addr = self._get_client_address(context)
         
         try:
@@ -192,11 +224,15 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             self._log_request("DELETE", request.key, client_addr, duration_ms, "ERROR")
             logger.exception(f"Error in Delete operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details("Internal server error")
+            context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheResponse()
+        finally:
+            request_id_var.reset(token)
 
     async def Stats(self, request, context):
         start_time = time.monotonic()
+        request_id = self._get_request_id(context)
+        token = request_id_var.set(request_id)
         client_addr = self._get_client_address(context)
         
         try:
@@ -222,8 +258,10 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
             logger.exception(f"Error in Stats operation: {e}")
             context.set_code(StatusCode.INTERNAL)
-            context.set_details("Internal server error")
+            context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheStats()
+        finally:
+            request_id_var.reset(token)
 
 class ConnectionInterceptor(grpc.aio.ServerInterceptor):
     """Interceptor to track in-flight RPCs"""
@@ -323,11 +361,24 @@ class HealthCheckServer:
                 content_type="application/json"
             )
 
+
+@web.middleware
+async def request_id_middleware(request, handler):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    token = request_id_var.set(request_id)
+    try:
+        response = await handler(request)
+    finally:
+        request_id_var.reset(token)
+
+    response.headers["x-request-id"] = request_id
+    return response
+
 async def create_health_server(cache_store, service_instance, grpc_port: int):
     """Create and configure the health check HTTP server"""
     health_server = HealthCheckServer(cache_store, service_instance)
     
-    app = web.Application()
+    app = web.Application(middlewares=[request_id_middleware])
     app.router.add_get('/health', health_server.health_check)
     app.router.add_get('/ready', health_server.readiness_check)
     app.router.add_get('/live', health_server.liveness_check)
