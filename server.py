@@ -6,6 +6,8 @@ import time
 import json
 from aiohttp import web
 import grpc
+from grpc_health.v1 import health as grpc_health
+from grpc_health.v1 import health_pb2, health_pb2_grpc
 from grpc import StatusCode
 import cache_pb2, cache_pb2_grpc
 from cache_store import CacheStore, MAX_KEY_LENGTH
@@ -28,6 +30,14 @@ HEALTH_HOST = os.getenv('CACHE_HEALTH_HOST', '0.0.0.0')
 HEALTH_PORT = get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535)
 
 store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_interval=CLEANUP_INTERVAL)
+
+def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServicer:
+    servicer = grpc_health.HealthServicer()
+    health_pb2_grpc.add_HealthServicer_to_server(servicer, server)
+
+    servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    servicer.set("cache.CacheService", health_pb2.HealthCheckResponse.SERVING)
+    return servicer
 
 class CacheService(cache_pb2_grpc.CacheServiceServicer):
     def __init__(self, cache_store: CacheStore | None = None):
@@ -326,6 +336,7 @@ async def serve():
     service_instance = CacheService()
     server = grpc.aio.server(interceptors=[ConnectionInterceptor(service_instance)])
     cache_pb2_grpc.add_CacheServiceServicer_to_server(service_instance, server)
+    grpc_health_servicer = add_grpc_health_service(server)
     
     listen_addr = f'{HOST}:{PORT}'
     server.add_insecure_port(listen_addr)
@@ -363,6 +374,8 @@ async def serve():
     
     def signal_handler():
         logger.info("Received shutdown signal, stopping cache service...")
+        grpc_health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+        grpc_health_servicer.set("cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING)
         service_instance.cache_store.stop()
         asyncio.create_task(server.stop(grace=5))
         asyncio.create_task(health_runner.cleanup())
