@@ -1,7 +1,7 @@
 import time
 import sys
 import os
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
 from collections import OrderedDict
 from typing import Optional, Dict, Any
 
@@ -52,7 +52,7 @@ class CacheStore:
         self.evictions = 0
         self.lock = Lock()
 
-        self._stop_flag = False
+        self._stop_event = Event()
         self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
         self.cleaner_thread.start()
 
@@ -169,9 +169,8 @@ class CacheStore:
 
     def _background_cleanup(self) -> None:
         """Background thread to clean up expired entries"""
-        while not self._stop_flag:
+        while not self._stop_event.wait(self.cleanup_interval):
             try:
-                time.sleep(self.cleanup_interval)
                 with self.lock:
                     items = list(self.store.items())
 
@@ -201,6 +200,6 @@ class CacheStore:
 
     def stop(self) -> None:
         """Stop the cache and cleanup background thread"""
-        self._stop_flag = True
+        self._stop_event.set()
         if self.cleaner_thread.is_alive():
             self.cleaner_thread.join(timeout=5)

@@ -505,8 +505,7 @@ class TestCacheStore:
         time.sleep(0.1)
         
         # Verify thread is stopped
-        assert cache._stop_flag is True
-        # Note: Thread might still be alive briefly due to cleanup_interval
+        assert cache._stop_event.is_set() is True
     
     def test_memory_tracking_accuracy(self):
         """Test that memory tracking is accurate."""
