@@ -70,7 +70,8 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         try:
             peer = context.peer()
             return peer if peer else "unknown"
-        except:
+        except Exception:
+            logger.debug("Unable to read client peer from context", exc_info=True)
             return "unknown"
 
     async def Get(self, request, context):
@@ -213,8 +214,8 @@ class ConnectionInterceptor(grpc.aio.ServerInterceptor):
                     if key == ':authority':
                         client_addr = value
                         break
-        except:
-            pass
+        except Exception:
+            logger.debug("Unable to parse invocation metadata", exc_info=True)
         
         self.service_instance.active_connections += 1
         logger.info(f"Client connected from {client_addr} (active connections: {self.service_instance.active_connections})")
