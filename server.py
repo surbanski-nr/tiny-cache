@@ -8,7 +8,7 @@ from aiohttp import web
 import grpc
 from grpc import StatusCode
 import cache_pb2, cache_pb2_grpc
-from cache_store import CacheStore
+from cache_store import CacheStore, MAX_KEY_LENGTH
 
 # Configure logging level from environment variable
 LOG_LEVEL = os.getenv('CACHE_LOG_LEVEL', 'INFO').upper()
@@ -84,6 +84,11 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheValue(found=False)
+            if len(request.key) > MAX_KEY_LENGTH:
+                self._log_request("GET", request.key, client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
+                return cache_pb2.CacheValue(found=False)
             
             value = await asyncio.to_thread(store.get, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -119,6 +124,11 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("SET", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
+                return cache_pb2.CacheResponse(status="ERROR")
+            if len(request.key) > MAX_KEY_LENGTH:
+                self._log_request("SET", request.key, client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheResponse(status="ERROR")
             
             try:
@@ -157,6 +167,11 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("DELETE", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
+                return cache_pb2.CacheResponse(status="ERROR")
+            if len(request.key) > MAX_KEY_LENGTH:
+                self._log_request("DELETE", request.key, client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheResponse(status="ERROR")
             
             success = await asyncio.to_thread(store.delete, request.key)
