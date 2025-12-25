@@ -181,12 +181,6 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             stats = store.stats()
             duration_ms = (time.monotonic() - start_time) * 1000
             
-            if "error" in stats:
-                self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
-                context.set_code(StatusCode.INTERNAL)
-                context.set_details(f"Error getting stats: {stats['error']}")
-                return cache_pb2.CacheStats(size=0, hits=0, misses=0)
-            
             result = f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} misses={stats.get('misses', 0)}"
             self._log_request("STATS", "", client_addr, duration_ms, result)
             
@@ -246,14 +240,6 @@ class HealthCheckServer:
         try:
             # Check if cache store is responsive
             stats = self.cache_store.stats()
-            if "error" in stats:
-                # Only log health check failures at WARNING level
-                logger.warning(f"Health check failed: {stats['error']}")
-                return web.Response(
-                    text=json.dumps({"status": "unhealthy", "error": stats["error"]}),
-                    status=503,
-                    content_type="application/json"
-                )
             
             uptime = time.monotonic() - self.start_time
             response_data = {

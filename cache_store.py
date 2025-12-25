@@ -154,22 +154,18 @@ class CacheStore:
         return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
 
     def stats(self) -> Dict[str, Any]:
-        try:
-            with self.lock:
-                return {
-                    "size": len(self.store),
-                    "hits": self.hits,
-                    "misses": self.misses,
-                    "evictions": self.evictions,
-                    "hit_rate": self.hits / (self.hits + self.misses) if (self.hits + self.misses) > 0 else 0,
-                    "memory_usage_bytes": self.current_memory_bytes,
-                    "memory_usage_mb": round(self.current_memory_bytes / (1024 * 1024), 2),
-                    "max_memory_mb": round(self.max_memory_bytes / (1024 * 1024), 2),
-                    "max_items": self.max_items
-                }
-        except Exception as e:
-            print(f"Error getting stats: {e}")
-            return {"error": str(e)}
+        with self.lock:
+            return {
+                "size": len(self.store),
+                "hits": self.hits,
+                "misses": self.misses,
+                "evictions": self.evictions,
+                "hit_rate": self.hits / (self.hits + self.misses) if (self.hits + self.misses) > 0 else 0,
+                "memory_usage_bytes": self.current_memory_bytes,
+                "memory_usage_mb": round(self.current_memory_bytes / (1024 * 1024), 2),
+                "max_memory_mb": round(self.max_memory_bytes / (1024 * 1024), 2),
+                "max_items": self.max_items
+            }
 
     def _background_cleanup(self) -> None:
         """Background thread to clean up expired entries"""
