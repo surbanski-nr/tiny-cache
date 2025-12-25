@@ -9,6 +9,12 @@ service CacheService {
   rpc Stats (Empty) returns (CacheStats);
 }
 
+enum CacheStatus {
+  CACHE_STATUS_UNSPECIFIED = 0;
+  OK = 1;
+  ERROR = 2;
+}
+
 message CacheKey {
   string key = 1;
 }
@@ -25,7 +31,7 @@ message CacheValue {
 }
 
 message CacheResponse {
-  string status = 1;
+  CacheStatus status = 1;
 }
 
 message CacheStats {
