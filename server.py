@@ -387,6 +387,49 @@ class HealthCheckServer:
                 content_type="application/json"
             )
 
+    async def metrics(self, request):
+        """Prometheus metrics endpoint."""
+        try:
+            stats = await asyncio.to_thread(self.cache_store.stats)
+            uptime = time.monotonic() - self.start_time
+
+            lines = [
+                "# HELP tiny_cache_hits_total Total cache hits",
+                "# TYPE tiny_cache_hits_total counter",
+                f"tiny_cache_hits_total {int(stats.get('hits', 0))}",
+                "# HELP tiny_cache_misses_total Total cache misses",
+                "# TYPE tiny_cache_misses_total counter",
+                f"tiny_cache_misses_total {int(stats.get('misses', 0))}",
+                "# HELP tiny_cache_evictions_total Total cache evictions",
+                "# TYPE tiny_cache_evictions_total counter",
+                f"tiny_cache_evictions_total {int(stats.get('evictions', 0))}",
+                "# HELP tiny_cache_entries Current number of entries",
+                "# TYPE tiny_cache_entries gauge",
+                f"tiny_cache_entries {int(stats.get('size', 0))}",
+                "# HELP tiny_cache_memory_usage_bytes Current memory usage in bytes (best-effort)",
+                "# TYPE tiny_cache_memory_usage_bytes gauge",
+                f"tiny_cache_memory_usage_bytes {int(stats.get('memory_usage_bytes', 0))}",
+                "# HELP tiny_cache_active_requests Current in-flight gRPC requests",
+                "# TYPE tiny_cache_active_requests gauge",
+                f"tiny_cache_active_requests {int(self.service_instance.active_requests)}",
+                "# HELP tiny_cache_uptime_seconds Process uptime in seconds",
+                "# TYPE tiny_cache_uptime_seconds gauge",
+                f"tiny_cache_uptime_seconds {uptime}",
+                "",
+            ]
+            return web.Response(
+                text="\n".join(lines),
+                status=200,
+                content_type="text/plain; version=0.0.4",
+            )
+        except Exception as e:
+            logger.exception(f"Metrics error: {e}")
+            return web.Response(
+                text="",
+                status=503,
+                content_type="text/plain; version=0.0.4",
+            )
+
 
 @web.middleware
 async def request_id_middleware(request, handler):
@@ -408,13 +451,14 @@ async def create_health_server(cache_store, service_instance, grpc_port: int):
     app.router.add_get('/health', health_server.health_check)
     app.router.add_get('/ready', health_server.readiness_check)
     app.router.add_get('/live', health_server.liveness_check)
+    app.router.add_get('/metrics', health_server.metrics)
     
     # Add a simple root endpoint
     async def root_handler(request):
         return web.Response(
             text=json.dumps({
                 "service": "tiny-cache",
-                "endpoints": ["/health", "/ready", "/live"],
+                "endpoints": ["/health", "/ready", "/live", "/metrics"],
                 "grpc_port": grpc_port
             }),
             content_type="application/json"
