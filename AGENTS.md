@@ -46,7 +46,7 @@ When running tests for either project:
 
 ### Code Style Requirements
 - **NO EMOTICONS**: Do not use any emoticons, emojis, or Unicode symbols in code, comments, documentation, or output messages
-- Use clear, professional text instead of emoticons (e.g., "SUCCESS" instead of "✅", "ERROR" instead of "❌")
+- Use clear, professional text instead of emoticons (e.g., use "SUCCESS" and "ERROR")
 - Maintain clean, readable code without visual decorations
 - Focus on technical accuracy and clarity over visual appeal
 
