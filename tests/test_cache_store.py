@@ -293,26 +293,22 @@ class TestCacheStore:
     
     def test_memory_based_eviction(self):
         """Test eviction based on memory limits."""
-        # Create cache with very small memory limit
-        cache = CacheStore(max_items=100, max_memory_mb=1)  # 1MB
-        
-        # Try to add large values
-        large_value = "x" * 500  # 500 bytes
-        
-        result1 = cache.set("key1", large_value)
-        assert result1 is True
-        
-        result2 = cache.set("key2", large_value)
-        # This might succeed or fail depending on exact memory calculation
-        
-        # Try to add a value that definitely won't fit
-        huge_value = "x" * 2000  # 2KB
-        result3 = cache.set("key3", huge_value)
-        
-        # Should have some evictions due to memory pressure
+        cache = CacheStore(max_items=100, max_memory_mb=1, cleanup_interval=10)
+        value = b"x" * 100
+        entry_size = sys.getsizeof(value)
+
+        cache.max_memory_bytes = entry_size + 1
+
+        assert cache.set("key1", value) is True
+        assert cache.set("key2", value) is True  # Evicts key1
+
+        assert cache.get("key1") is None
+        assert cache.get("key2") == value
+
         stats = cache.stats()
-        assert stats["evictions"] >= 0
-        
+        assert stats["size"] == 1
+        assert stats["evictions"] == 1
+
         cache.stop()
 
     def test_max_value_bytes_enforced(self):
