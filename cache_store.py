@@ -15,7 +15,13 @@ class CacheEntry:
         self.size_bytes = sys.getsizeof(value)
 
 class CacheStore:
-    def __init__(self, max_items: Optional[int] = None, max_memory_mb: Optional[int] = None, cleanup_interval: Optional[int] = None):
+    def __init__(
+        self,
+        max_items: Optional[int] = None,
+        max_memory_mb: Optional[int] = None,
+        cleanup_interval: Optional[int] = None,
+        max_value_bytes: Optional[int] = None,
+    ):
         def _resolve_int(
             arg_value: Optional[int],
             env_name: str,
@@ -45,6 +51,9 @@ class CacheStore:
         self.max_items = _resolve_int(max_items, "CACHE_MAX_ITEMS", 1000, min_value=1)
         resolved_max_memory_mb = _resolve_int(max_memory_mb, "CACHE_MAX_MEMORY_MB", 100, min_value=1)
         self.max_memory_bytes = resolved_max_memory_mb * 1024 * 1024
+        self.max_value_bytes = _resolve_int(
+            max_value_bytes, "CACHE_MAX_VALUE_BYTES", self.max_memory_bytes, min_value=1
+        )
         self.cleanup_interval = _resolve_int(cleanup_interval, "CACHE_CLEANUP_INTERVAL", 10, min_value=1)
         
         self.store: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -97,7 +106,7 @@ class CacheStore:
 
             entry = CacheEntry(value, ttl)
 
-            if entry.size_bytes > self.max_memory_bytes:
+            if entry.size_bytes > self.max_value_bytes:
                 if old_entry is not None:
                     self.store[key] = old_entry
                     self.current_memory_bytes += old_entry.size_bytes
