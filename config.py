@@ -26,3 +26,16 @@ def get_env_int(
         raise ValueError(f"{env_name} must be <= {max_value}, got {value}")
     return value
 
+
+def get_env_bool(env_name: str, default_value: bool) -> bool:
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        return default_value
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+
+    raise ValueError(f"{env_name} must be a boolean, got {raw_value!r}")
