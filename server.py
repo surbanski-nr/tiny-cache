@@ -7,6 +7,7 @@ import time
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from aiohttp import web
 import grpc
 from grpc_health.v1 import health as grpc_health
@@ -27,6 +28,20 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "request_id": getattr(record, "request_id", "-"),
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
 @dataclass(frozen=True)
 class Settings:
     max_items: int
@@ -37,14 +52,24 @@ class Settings:
     health_host: str
     health_port: int
     log_level: str
+    log_format: str
 
-def configure_logging(log_level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, log_level, logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(request_id)s - %(message)s",
-    )
-    for handler in logging.getLogger().handlers:
-        handler.addFilter(RequestIdFilter())
+def configure_logging(log_level: str, log_format: str = "text") -> None:
+    level = getattr(logging, log_level.upper(), logging.INFO)
+
+    handler = logging.StreamHandler()
+    handler.addFilter(RequestIdFilter())
+
+    if log_format.lower() == "json":
+        handler.setFormatter(JsonFormatter())
+    else:
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(request_id)s - %(message)s"
+            )
+        )
+
+    logging.basicConfig(level=level, handlers=[handler], force=True)
 
 
 def load_settings() -> Settings:
@@ -57,6 +82,7 @@ def load_settings() -> Settings:
         health_host=os.getenv("CACHE_HEALTH_HOST", "0.0.0.0"),
         health_port=get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535),
         log_level=os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
+        log_format=os.getenv("CACHE_LOG_FORMAT", "text"),
     )
 
 def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServicer:
@@ -473,7 +499,10 @@ async def serve(settings: Settings | None = None):
         await health_runner.cleanup()
 
 if __name__ == "__main__":
-    configure_logging(os.getenv("CACHE_LOG_LEVEL", "INFO").upper())
+    configure_logging(
+        os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
+        os.getenv("CACHE_LOG_FORMAT", "text"),
+    )
     try:
         settings = load_settings()
         asyncio.run(serve(settings))
