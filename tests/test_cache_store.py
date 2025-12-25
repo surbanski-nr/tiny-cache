@@ -69,6 +69,30 @@ class TestCacheStore:
 
         with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "0"}):
             assert get_env_bool("CACHE_TLS_ENABLED", True) is False
+
+    def test_load_settings_parses_max_value_bytes(self):
+        """Test server settings enforce max value bytes bounds."""
+        from tiny_cache.server import load_settings
+
+        with patch.dict("os.environ", {"CACHE_MAX_MEMORY_MB": "1"}, clear=True):
+            settings = load_settings()
+            assert settings.max_value_bytes == 1024 * 1024
+
+        with patch.dict(
+            "os.environ",
+            {"CACHE_MAX_MEMORY_MB": "1", "CACHE_MAX_VALUE_BYTES": "100"},
+            clear=True,
+        ):
+            settings = load_settings()
+            assert settings.max_value_bytes == 100
+
+        with patch.dict(
+            "os.environ",
+            {"CACHE_MAX_MEMORY_MB": "1", "CACHE_MAX_VALUE_BYTES": str(1024 * 1024 + 1)},
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="CACHE_MAX_VALUE_BYTES must be <= "):
+                load_settings()
     
     def test_cache_store_initialization_custom_values(self):
         """Test CacheStore initialization with custom values."""
