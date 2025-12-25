@@ -86,7 +86,7 @@ def main():
         cmd.append("-v")
     
     if args.coverage:
-        cmd.extend(["--cov=cache_store", "--cov=server", "--cov-report=term-missing"])
+        cmd.extend(["--cov=tiny_cache", "--cov-report=term-missing"])
     
     # Add test selection
     unit_test_paths = [

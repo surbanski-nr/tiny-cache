@@ -5,8 +5,8 @@ import aiohttp
 import pytest
 from aiohttp import web
 
-from cache_store import CacheStore
-from server import CacheService, create_health_server
+from tiny_cache.cache_store import CacheStore
+from tiny_cache.server import CacheService, create_health_server
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]

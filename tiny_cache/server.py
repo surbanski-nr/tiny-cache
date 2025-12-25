@@ -15,8 +15,8 @@ from grpc_health.v1 import health as grpc_health
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 from grpc import StatusCode
 import cache_pb2, cache_pb2_grpc
-from cache_store import CacheStore, MAX_KEY_LENGTH
-from config import get_env_bool, get_env_int
+from .cache_store import CacheStore, MAX_KEY_LENGTH
+from .config import get_env_bool, get_env_int
 
 logger = logging.getLogger(__name__)
 

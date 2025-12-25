@@ -1,9 +1,8 @@
 import time
 import sys
-import os
 import pytest
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from cache_store import CacheEntry
+
+from tiny_cache.cache_store import CacheEntry
 
 
 @pytest.mark.unit

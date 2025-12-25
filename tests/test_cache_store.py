@@ -4,9 +4,8 @@ import threading
 from queue import Queue
 from unittest.mock import patch
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from cache_store import CacheStore, CacheEntry, MAX_KEY_LENGTH
+
+from tiny_cache.cache_store import CacheStore, CacheEntry, MAX_KEY_LENGTH
 
 
 @pytest.mark.unit
@@ -47,7 +46,7 @@ class TestCacheStore:
 
     def test_get_env_int_validation(self):
         """Test env parsing helper provides clear errors."""
-        from config import get_env_int
+        from tiny_cache.config import get_env_int
 
         with patch.dict('os.environ', {'CACHE_MAX_ITEMS': 'not-an-int'}):
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be an integer"):
@@ -59,7 +58,7 @@ class TestCacheStore:
 
     def test_get_env_bool_validation(self):
         """Test bool env parsing helper provides clear errors."""
-        from config import get_env_bool
+        from tiny_cache.config import get_env_bool
 
         with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "not-a-bool"}):
             with pytest.raises(ValueError, match="CACHE_TLS_ENABLED must be a boolean"):
