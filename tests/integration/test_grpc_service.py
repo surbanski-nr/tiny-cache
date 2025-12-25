@@ -60,7 +60,7 @@ async def test_set_get_roundtrip_utf8_bytes(grpc_server):
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Set(cache_pb2.CacheItem(key="k1", value=b"hello", ttl=0))
-    assert response.status == "OK"
+    assert response.status == cache_pb2.CacheStatus.OK
 
     value = await stub.Get(cache_pb2.CacheKey(key="k1"))
     assert value.found is True
@@ -74,7 +74,7 @@ async def test_set_get_roundtrip_binary_bytes(grpc_server):
 
     payload = b"\xff\x00\xfe"
     response = await stub.Set(cache_pb2.CacheItem(key="bin", value=payload, ttl=0))
-    assert response.status == "OK"
+    assert response.status == cache_pb2.CacheStatus.OK
 
     value = await stub.Get(cache_pb2.CacheKey(key="bin"))
     assert value.found is True
@@ -97,7 +97,7 @@ async def test_delete_missing_is_idempotent_ok(grpc_server):
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Delete(cache_pb2.CacheKey(key="missing"))
-    assert response.status == "OK"
+    assert response.status == cache_pb2.CacheStatus.OK
 
 
 async def test_invalid_key_returns_invalid_argument(grpc_server):
@@ -118,7 +118,7 @@ async def test_ttl_expiration(grpc_server):
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Set(cache_pb2.CacheItem(key="ttl", value=b"value", ttl=1))
-    assert response.status == "OK"
+    assert response.status == cache_pb2.CacheStatus.OK
 
     value = await stub.Get(cache_pb2.CacheKey(key="ttl"))
     assert value.found is True
@@ -157,7 +157,7 @@ async def test_stats_reports_size_hits_misses(grpc_server):
     assert stats.misses == 0
 
     response = await stub.Set(cache_pb2.CacheItem(key="key", value=b"value", ttl=0))
-    assert response.status == "OK"
+    assert response.status == cache_pb2.CacheStatus.OK
 
     await stub.Get(cache_pb2.CacheKey(key="key"))
     await stub.Get(cache_pb2.CacheKey(key="missing"))
