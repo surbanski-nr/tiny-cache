@@ -38,6 +38,8 @@ async def test_health_endpoints_ok():
             async with session.get(f"http://127.0.0.1:{port}/health") as resp:
                 assert resp.status == 200
                 assert resp.headers.get("Content-Type", "").startswith("application/json")
+                request_id = resp.headers.get("x-request-id")
+                assert request_id
                 payload = await resp.json()
 
             assert payload["status"] == "healthy"
@@ -59,6 +61,12 @@ async def test_health_endpoints_ok():
                 assert payload["status"] == "alive"
                 assert isinstance(payload["uptime_seconds"], (int, float))
                 assert isinstance(payload["timestamp"], (int, float))
+
+            async with session.get(
+                f"http://127.0.0.1:{port}/live",
+                headers={"x-request-id": "test-request-id"},
+            ) as resp:
+                assert resp.headers.get("x-request-id") == "test-request-id"
 
             async with session.get(f"http://127.0.0.1:{port}/") as resp:
                 assert resp.status == 200
@@ -86,6 +94,7 @@ async def test_health_endpoints_error_on_stats_exception():
         async with aiohttp.ClientSession() as session:
             async with session.get(f"http://127.0.0.1:{port}/health") as resp:
                 assert resp.status == 503
+                assert resp.headers.get("x-request-id")
                 body = await resp.text()
                 payload = json.loads(body)
                 assert payload["status"] == "error"

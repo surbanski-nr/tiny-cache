@@ -1,4 +1,5 @@
 import threading
+from unittest.mock import patch
 
 import grpc
 import pytest
@@ -175,3 +176,19 @@ async def test_stats_reports_size_hits_misses(grpc_server):
     assert stats.hit_rate == pytest.approx(0.5)
     assert stats.memory_usage_bytes > 0
     assert stats.memory_usage_bytes <= stats.max_memory_bytes
+
+
+async def test_internal_error_includes_request_id(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    stub, _service = await grpc_server(cache_store)
+
+    with patch.object(cache_store, "get", side_effect=RuntimeError("boom")):
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.Get(
+                cache_pb2.CacheKey(key="k"),
+                metadata=(("x-request-id", "rid-123"),),
+            )
+
+    assert exc_info.value.code() == grpc.StatusCode.INTERNAL
+    assert "request_id=rid-123" in exc_info.value.details()
