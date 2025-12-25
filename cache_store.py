@@ -1,11 +1,13 @@
 import time
 import sys
-import os
 from threading import Lock, Thread, Event
 from collections import OrderedDict
 from typing import Optional, Dict, Any, Callable
 
 MAX_KEY_LENGTH = 256
+DEFAULT_MAX_ITEMS = 1000
+DEFAULT_MAX_MEMORY_MB = 100
+DEFAULT_CLEANUP_INTERVAL = 10
 
 class CacheEntry:
     def __init__(self, value: Any, ttl: Optional[int] = None, created_at: Optional[float] = None):
@@ -23,39 +25,27 @@ class CacheStore:
         max_value_bytes: Optional[int] = None,
         clock: Optional[Callable[[], float]] = None,
     ):
-        def _resolve_int(
-            arg_value: Optional[int],
-            env_name: str,
-            default_value: int,
-            *,
-            min_value: Optional[int] = None,
-            max_value: Optional[int] = None,
-        ) -> int:
-            if arg_value is not None:
-                value = arg_value
-            else:
-                raw_value = os.getenv(env_name)
-                if raw_value is None:
-                    value = default_value
-                else:
-                    try:
-                        value = int(raw_value)
-                    except ValueError as exc:
-                        raise ValueError(f"{env_name} must be an integer, got {raw_value!r}") from exc
+        resolved_max_items = DEFAULT_MAX_ITEMS if max_items is None else max_items
+        if resolved_max_items < 1:
+            raise ValueError(f"max_items must be >= 1, got {resolved_max_items}")
 
-            if min_value is not None and value < min_value:
-                raise ValueError(f"{env_name} must be >= {min_value}, got {value}")
-            if max_value is not None and value > max_value:
-                raise ValueError(f"{env_name} must be <= {max_value}, got {value}")
-            return value
+        resolved_max_memory_mb = DEFAULT_MAX_MEMORY_MB if max_memory_mb is None else max_memory_mb
+        if resolved_max_memory_mb < 1:
+            raise ValueError(f"max_memory_mb must be >= 1, got {resolved_max_memory_mb}")
 
-        self.max_items = _resolve_int(max_items, "CACHE_MAX_ITEMS", 1000, min_value=1)
-        resolved_max_memory_mb = _resolve_int(max_memory_mb, "CACHE_MAX_MEMORY_MB", 100, min_value=1)
+        resolved_cleanup_interval = DEFAULT_CLEANUP_INTERVAL if cleanup_interval is None else cleanup_interval
+        if resolved_cleanup_interval < 1:
+            raise ValueError(f"cleanup_interval must be >= 1, got {resolved_cleanup_interval}")
+
+        self.max_items = resolved_max_items
         self.max_memory_bytes = resolved_max_memory_mb * 1024 * 1024
-        self.max_value_bytes = _resolve_int(
-            max_value_bytes, "CACHE_MAX_VALUE_BYTES", self.max_memory_bytes, min_value=1
-        )
-        self.cleanup_interval = _resolve_int(cleanup_interval, "CACHE_CLEANUP_INTERVAL", 10, min_value=1)
+
+        resolved_max_value_bytes = self.max_memory_bytes if max_value_bytes is None else max_value_bytes
+        if resolved_max_value_bytes < 1:
+            raise ValueError(f"max_value_bytes must be >= 1, got {resolved_max_value_bytes}")
+        self.max_value_bytes = min(resolved_max_value_bytes, self.max_memory_bytes)
+
+        self.cleanup_interval = resolved_cleanup_interval
         
         self.store: OrderedDict[str, CacheEntry] = OrderedDict()
         self.current_memory_bytes = 0

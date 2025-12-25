@@ -23,43 +23,38 @@ class TestCacheStore:
     
     def test_cache_store_initialization_default_values(self):
         """Test CacheStore initialization with default values."""
-        with patch.dict('os.environ', {
-            'CACHE_MAX_ITEMS': '500',
-            'CACHE_MAX_MEMORY_MB': '50',
-            'CACHE_CLEANUP_INTERVAL': '5'
-        }):
-            cache = CacheStore()
-            assert cache.max_items == 500
-            assert cache.max_memory_bytes == 50 * 1024 * 1024
-            assert cache.cleanup_interval == 5
-            cache.stop()
+        cache = CacheStore()
+        assert cache.max_items == 1000
+        assert cache.max_memory_bytes == 100 * 1024 * 1024
+        assert cache.max_value_bytes == cache.max_memory_bytes
+        assert cache.cleanup_interval == 10
+        cache.stop()
 
-    def test_cache_store_initialization_invalid_env_values(self):
-        """Test CacheStore raises clear errors for invalid env vars."""
+    def test_cache_store_initialization_invalid_values(self):
+        """Test CacheStore raises clear errors for invalid config values."""
+        with pytest.raises(ValueError, match="max_items must be >= 1"):
+            CacheStore(max_items=0)
+
+        with pytest.raises(ValueError, match="max_memory_mb must be >= 1"):
+            CacheStore(max_memory_mb=0)
+
+        with pytest.raises(ValueError, match="cleanup_interval must be >= 1"):
+            CacheStore(cleanup_interval=0)
+
+        with pytest.raises(ValueError, match="max_value_bytes must be >= 1"):
+            CacheStore(max_value_bytes=0)
+
+    def test_get_env_int_validation(self):
+        """Test env parsing helper provides clear errors."""
+        from config import get_env_int
+
         with patch.dict('os.environ', {'CACHE_MAX_ITEMS': 'not-an-int'}):
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be an integer"):
-                CacheStore()
+                get_env_int("CACHE_MAX_ITEMS", 1000)
 
         with patch.dict('os.environ', {'CACHE_MAX_ITEMS': '0'}):
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be >= 1"):
-                CacheStore()
-
-        with patch.dict('os.environ', {'CACHE_MAX_MEMORY_MB': '0'}):
-            with pytest.raises(ValueError, match="CACHE_MAX_MEMORY_MB must be >= 1"):
-                CacheStore()
-
-        with patch.dict('os.environ', {'CACHE_CLEANUP_INTERVAL': '0'}):
-            with pytest.raises(ValueError, match="CACHE_CLEANUP_INTERVAL must be >= 1"):
-                CacheStore()
-
-    def test_cache_store_init_args_override_invalid_env(self):
-        """Test explicit args override invalid env values."""
-        with patch.dict('os.environ', {'CACHE_MAX_ITEMS': 'not-an-int'}):
-            cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
-            assert cache.max_items == 10
-            assert cache.max_memory_bytes == 1 * 1024 * 1024
-            assert cache.cleanup_interval == 1
-            cache.stop()
+                get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1)
     
     def test_cache_store_initialization_custom_values(self):
         """Test CacheStore initialization with custom values."""
