@@ -206,20 +206,11 @@ class ConnectionInterceptor(grpc.aio.ServerInterceptor):
         self.service_instance = service_instance
     
     async def intercept_service(self, continuation, handler_call_details):
-        # Log new connection
-        client_addr = "unknown"
-        try:
-            if hasattr(handler_call_details, 'invocation_metadata'):
-                for key, value in handler_call_details.invocation_metadata:
-                    if key == ':authority':
-                        client_addr = value
-                        break
-        except Exception:
-            logger.debug("Unable to parse invocation metadata", exc_info=True)
+        rpc_method = getattr(handler_call_details, "method", "unknown")
         
         self.service_instance.active_requests += 1
         logger.debug(
-            f"RPC started from {client_addr} (active requests: {self.service_instance.active_requests})"
+            f"RPC started {rpc_method} (active requests: {self.service_instance.active_requests})"
         )
         
         try:
@@ -229,7 +220,7 @@ class ConnectionInterceptor(grpc.aio.ServerInterceptor):
             # Log disconnection
             self.service_instance.active_requests -= 1
             logger.debug(
-                f"RPC finished from {client_addr} (active requests: {self.service_instance.active_requests})"
+                f"RPC finished {rpc_method} (active requests: {self.service_instance.active_requests})"
             )
 
 class HealthCheckServer:
