@@ -155,12 +155,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheResponse(status="ERROR")
             
-            success = await asyncio.to_thread(self.cache_store.delete, request.key)
+            deleted = await asyncio.to_thread(self.cache_store.delete, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
-            result = "OK" if success else "NOT_FOUND"
-            
-            self._log_request("DELETE", request.key, client_addr, duration_ms, result)
-            return cache_pb2.CacheResponse(status=result)
+            log_result = "OK" if deleted else "OK_MISSING"
+
+            self._log_request("DELETE", request.key, client_addr, duration_ms, log_result)
+            return cache_pb2.CacheResponse(status="OK")
         
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
