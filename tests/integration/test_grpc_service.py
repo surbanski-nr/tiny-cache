@@ -91,13 +91,13 @@ async def test_get_missing_returns_found_false(grpc_server):
     assert value.value == b""
 
 
-async def test_delete_missing_returns_not_found(grpc_server):
+async def test_delete_missing_is_idempotent_ok(grpc_server):
     clock = ThreadSafeClock()
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Delete(cache_pb2.CacheKey(key="missing"))
-    assert response.status == "NOT_FOUND"
+    assert response.status == "OK"
 
 
 async def test_invalid_key_returns_invalid_argument(grpc_server):
