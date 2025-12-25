@@ -4,6 +4,7 @@ import signal
 import logging
 import time
 import json
+from dataclasses import dataclass
 from aiohttp import web
 import grpc
 from grpc_health.v1 import health as grpc_health
@@ -13,23 +14,37 @@ import cache_pb2, cache_pb2_grpc
 from cache_store import CacheStore, MAX_KEY_LENGTH
 from config import get_env_int
 
-# Configure logging level from environment variable
-LOG_LEVEL = os.getenv('CACHE_LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
-MAX_ITEMS = get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1)
-MAX_MEMORY_MB = get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1)
-CLEANUP_INTERVAL = get_env_int("CACHE_CLEANUP_INTERVAL", 10, min_value=1)
-PORT = get_env_int("CACHE_PORT", 50051, min_value=1, max_value=65535)
-HOST = os.getenv('CACHE_HOST', '[::]')
-HEALTH_HOST = os.getenv('CACHE_HEALTH_HOST', '0.0.0.0')
-HEALTH_PORT = get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535)
+@dataclass(frozen=True)
+class Settings:
+    max_items: int
+    max_memory_mb: int
+    cleanup_interval: int
+    port: int
+    host: str
+    health_host: str
+    health_port: int
+    log_level: str
 
-store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_interval=CLEANUP_INTERVAL)
+def configure_logging(log_level: str) -> None:
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+
+def load_settings() -> Settings:
+    return Settings(
+        max_items=get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1),
+        max_memory_mb=get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1),
+        cleanup_interval=get_env_int("CACHE_CLEANUP_INTERVAL", 10, min_value=1),
+        port=get_env_int("CACHE_PORT", 50051, min_value=1, max_value=65535),
+        host=os.getenv("CACHE_HOST", "[::]"),
+        health_host=os.getenv("CACHE_HEALTH_HOST", "0.0.0.0"),
+        health_port=get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535),
+        log_level=os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
+    )
 
 def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServicer:
     servicer = grpc_health.HealthServicer()
@@ -40,9 +55,9 @@ def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServic
     return servicer
 
 class CacheService(cache_pb2_grpc.CacheServiceServicer):
-    def __init__(self, cache_store: CacheStore | None = None):
+    def __init__(self, cache_store: CacheStore):
         self.active_requests = 0
-        self.cache_store = cache_store or store
+        self.cache_store = cache_store
         
     def _log_request(self, operation, key, client_addr=None, duration_ms=None, result=None):
         """Log request details at DEBUG level"""
@@ -308,7 +323,7 @@ class HealthCheckServer:
                 content_type="application/json"
             )
 
-async def create_health_server(cache_store, service_instance):
+async def create_health_server(cache_store, service_instance, grpc_port: int):
     """Create and configure the health check HTTP server"""
     health_server = HealthCheckServer(cache_store, service_instance)
     
@@ -323,7 +338,7 @@ async def create_health_server(cache_store, service_instance):
             text=json.dumps({
                 "service": "tiny-cache",
                 "endpoints": ["/health", "/ready", "/live"],
-                "grpc_port": PORT
+                "grpc_port": grpc_port
             }),
             content_type="application/json"
         )
@@ -332,70 +347,85 @@ async def create_health_server(cache_store, service_instance):
     
     return app
 
-async def serve():
-    service_instance = CacheService()
+async def serve(settings: Settings | None = None):
+    settings = settings or load_settings()
+
+    cache_store = CacheStore(
+        max_items=settings.max_items,
+        max_memory_mb=settings.max_memory_mb,
+        cleanup_interval=settings.cleanup_interval,
+    )
+    service_instance = CacheService(cache_store)
+
     server = grpc.aio.server(interceptors=[ConnectionInterceptor(service_instance)])
     cache_pb2_grpc.add_CacheServiceServicer_to_server(service_instance, server)
     grpc_health_servicer = add_grpc_health_service(server)
-    
-    listen_addr = f'{HOST}:{PORT}'
+
+    listen_addr = f"{settings.host}:{settings.port}"
     server.add_insecure_port(listen_addr)
-    
+
     logger.info(f"Starting cache service on {listen_addr}")
-    logger.info(f"Configuration: max_items={MAX_ITEMS}, max_memory_mb={MAX_MEMORY_MB}, cleanup_interval={CLEANUP_INTERVAL}")
-    logger.info(f"Log level: {LOG_LEVEL}")
-    if LOG_LEVEL == 'DEBUG':
+    logger.info(
+        "Configuration: max_items=%s, max_memory_mb=%s, cleanup_interval=%s",
+        settings.max_items,
+        settings.max_memory_mb,
+        settings.cleanup_interval,
+    )
+    logger.info(f"Log level: {settings.log_level}")
+    if settings.log_level == "DEBUG":
         logger.info("Debug logging enabled - will log all client requests")
-    
+
     # Start gRPC server
     await server.start()
     logger.info("gRPC cache service started successfully")
-    
+
     # Start HTTP health check server
-    health_app = await create_health_server(service_instance.cache_store, service_instance)
-    
+    health_app = await create_health_server(cache_store, service_instance, settings.port)
+
     # Configure access logging - disable unless DEBUG level
-    if LOG_LEVEL == 'DEBUG':
+    if settings.log_level == "DEBUG":
         access_log = logger
         logger.info("Health check access logs enabled (DEBUG mode)")
     else:
         access_log = None
         # Completely disable the aiohttp.access logger for non-DEBUG
-        logging.getLogger('aiohttp.access').disabled = True
+        logging.getLogger("aiohttp.access").disabled = True
         logger.info("Health check access logs disabled")
-    
+
     health_runner = web.AppRunner(health_app, access_log=access_log)
     await health_runner.setup()
-    
-    health_site = web.TCPSite(health_runner, HEALTH_HOST, HEALTH_PORT)
+
+    health_site = web.TCPSite(health_runner, settings.health_host, settings.health_port)
     await health_site.start()
-    logger.info(f"Health check server started on port {HEALTH_PORT}")
+    logger.info(f"Health check server started on port {settings.health_port}")
     logger.info("Available endpoints: /health, /ready, /live")
-    
+
     def signal_handler():
         logger.info("Received shutdown signal, stopping cache service...")
         grpc_health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
         grpc_health_servicer.set("cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING)
-        service_instance.cache_store.stop()
+        cache_store.stop()
         asyncio.create_task(server.stop(grace=5))
         asyncio.create_task(health_runner.cleanup())
-    
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
-    
+
     try:
         await server.wait_for_termination()
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
     finally:
         logger.info("Cache service stopped")
-        service_instance.cache_store.stop()
+        cache_store.stop()
         await health_runner.cleanup()
 
 if __name__ == "__main__":
+    configure_logging(os.getenv("CACHE_LOG_LEVEL", "INFO").upper())
     try:
-        asyncio.run(serve())
-    except Exception as e:
-        logger.error(f"Failed to start cache service: {e}")
+        settings = load_settings()
+        asyncio.run(serve(settings))
+    except Exception:
+        logger.exception("Failed to start cache service")
         raise

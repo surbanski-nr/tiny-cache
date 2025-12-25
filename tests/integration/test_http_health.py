@@ -29,8 +29,8 @@ async def _start_app(app: web.Application) -> tuple[web.AppRunner, int]:
 
 async def test_health_endpoints_ok():
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
-    service = CacheService(cache_store=cache_store)
-    app = await create_health_server(cache_store, service)
+    service = CacheService(cache_store)
+    app = await create_health_server(cache_store, service, grpc_port=0)
 
     runner, port = await _start_app(app)
     try:
@@ -78,8 +78,8 @@ async def test_health_endpoints_error_on_stats_exception():
         def stats(self) -> dict[str, Any]:
             raise RuntimeError("boom")
 
-    service = CacheService(cache_store=CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600))
-    app = await create_health_server(BrokenStore(), service)
+    service = CacheService(CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600))
+    app = await create_health_server(BrokenStore(), service, grpc_port=0)
 
     runner, port = await _start_app(app)
     try:
@@ -92,4 +92,3 @@ async def test_health_endpoints_error_on_stats_exception():
     finally:
         await runner.cleanup()
         service.cache_store.stop()
-

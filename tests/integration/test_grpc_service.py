@@ -32,7 +32,7 @@ async def grpc_server():
     instances: list[tuple[grpc.aio.Server, grpc.aio.Channel, CacheStore]] = []
 
     async def _start(cache_store: CacheStore):
-        service = CacheService(cache_store=cache_store)
+        service = CacheService(cache_store)
         server = grpc.aio.server()
         cache_pb2_grpc.add_CacheServiceServicer_to_server(service, server)
 
