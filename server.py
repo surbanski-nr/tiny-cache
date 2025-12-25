@@ -24,6 +24,7 @@ MAX_MEMORY_MB = get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1)
 CLEANUP_INTERVAL = get_env_int("CACHE_CLEANUP_INTERVAL", 10, min_value=1)
 PORT = get_env_int("CACHE_PORT", 50051, min_value=1, max_value=65535)
 HOST = os.getenv('CACHE_HOST', '[::]')
+HEALTH_HOST = os.getenv('CACHE_HEALTH_HOST', '0.0.0.0')
 HEALTH_PORT = get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535)
 
 store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_interval=CLEANUP_INTERVAL)
@@ -349,7 +350,7 @@ async def serve():
     health_runner = web.AppRunner(health_app, access_log=access_log)
     await health_runner.setup()
     
-    health_site = web.TCPSite(health_runner, '0.0.0.0', HEALTH_PORT)
+    health_site = web.TCPSite(health_runner, HEALTH_HOST, HEALTH_PORT)
     await health_site.start()
     logger.info(f"Health check server started on port {HEALTH_PORT}")
     logger.info("Available endpoints: /health, /ready, /live")

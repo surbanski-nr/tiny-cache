@@ -10,6 +10,7 @@ services:
     environment:
       - CACHE_LOG_LEVEL=${CACHE_LOG_LEVEL:-INFO}
       - CACHE_PORT=${CACHE_PORT:-50051}
+      - CACHE_HEALTH_HOST=${CACHE_HEALTH_HOST:-0.0.0.0}
       - CACHE_HEALTH_PORT=${CACHE_HEALTH_PORT:-8080}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${CACHE_HEALTH_PORT:-8080}/health')"]
