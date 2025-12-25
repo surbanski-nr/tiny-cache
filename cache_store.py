@@ -23,6 +23,7 @@ class CacheStore:
         max_memory_mb: Optional[int] = None,
         cleanup_interval: Optional[int] = None,
         max_value_bytes: Optional[int] = None,
+        start_cleaner: bool = True,
         clock: Optional[Callable[[], float]] = None,
     ):
         resolved_max_items = DEFAULT_MAX_ITEMS if max_items is None else max_items
@@ -56,8 +57,17 @@ class CacheStore:
         self._clock = clock or time.monotonic
 
         self._stop_event = Event()
-        self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
-        self.cleaner_thread.start()
+        self.cleaner_thread: Thread | None = None
+        if start_cleaner:
+            self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
+            self.cleaner_thread.start()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.stop()
+        return False
 
     def _is_expired(self, entry: CacheEntry) -> bool:
         if entry.ttl is None:
@@ -206,5 +216,5 @@ class CacheStore:
     def stop(self) -> None:
         """Stop the cache and cleanup background thread"""
         self._stop_event.set()
-        if self.cleaner_thread.is_alive():
+        if self.cleaner_thread is not None and self.cleaner_thread.is_alive():
             self.cleaner_thread.join(timeout=5)

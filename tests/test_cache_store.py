@@ -536,16 +536,32 @@ class TestCacheStore:
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
         
         # Verify thread is running
+        assert cache.cleaner_thread is not None
         assert cache.cleaner_thread.is_alive()
         
         # Stop cache
         cache.stop()
         
-        # Wait a bit for thread to stop
-        time.sleep(0.1)
-        
         # Verify thread is stopped
         assert cache._stop_event.is_set() is True
+        assert cache.cleaner_thread.is_alive() is False
+
+    def test_disable_background_cleanup_thread(self):
+        """Test CacheStore can be created without starting a cleaner thread."""
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1, start_cleaner=False)
+        assert cache.cleaner_thread is None
+
+        cache.stop()
+        assert cache._stop_event.is_set() is True
+
+    def test_context_manager_stops_background_thread(self):
+        """Test CacheStore context manager stops the cleaner thread."""
+        with CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1) as cache:
+            assert cache.cleaner_thread is not None
+            assert cache.cleaner_thread.is_alive()
+
+        assert cache._stop_event.is_set() is True
+        assert cache.cleaner_thread.is_alive() is False
     
     def test_memory_tracking_accuracy(self):
         """Test that memory tracking is accurate."""
