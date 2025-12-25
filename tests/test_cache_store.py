@@ -313,6 +313,16 @@ class TestCacheStore:
         assert stats["evictions"] >= 0
         
         cache.stop()
+
+    def test_max_value_bytes_enforced(self):
+        """Test per-entry max value size enforcement."""
+        cache = CacheStore(max_items=10, max_memory_mb=10, cleanup_interval=10, max_value_bytes=100)
+
+        assert cache.set("small", "x") is True
+        assert cache.set("large", "x" * 1000) is False
+        assert cache.get("large") is None
+
+        cache.stop()
     
     def test_clear_cache(self):
         """Test clearing the entire cache."""
