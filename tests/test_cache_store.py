@@ -1,6 +1,7 @@
 import pytest
 import time
 import threading
+from queue import Queue
 from unittest.mock import patch
 import sys
 import os
@@ -436,8 +437,8 @@ class TestCacheStore:
     def test_thread_safety(self):
         """Test thread safety of cache operations."""
         cache = CacheStore(max_items=100, max_memory_mb=10)
-        results = []
-        errors = []
+        results: Queue[tuple[str, str, str]] = Queue()
+        errors: Queue[Exception] = Queue()
         
         def worker(thread_id):
             try:
@@ -450,12 +451,12 @@ class TestCacheStore:
                     
                     # Get value
                     retrieved = cache.get(key)
-                    results.append((key, value, retrieved))
+                    results.put((key, value, retrieved))
                     
                     # Small delay to increase chance of race conditions
                     time.sleep(0.001)
             except Exception as e:
-                errors.append(e)
+                errors.put(e)
         
         # Create multiple threads
         threads = []
@@ -469,10 +470,11 @@ class TestCacheStore:
             thread.join()
         
         # Check results
-        assert len(errors) == 0, f"Errors occurred: {errors}"
+        assert errors.qsize() == 0, f"Errors occurred: {[errors.get() for _ in range(errors.qsize())]}"
         
         # Verify all operations succeeded
-        for key, expected_value, retrieved_value in results:
+        while not results.empty():
+            _, expected_value, retrieved_value = results.get()
             assert retrieved_value == expected_value
         
         cache.stop()
