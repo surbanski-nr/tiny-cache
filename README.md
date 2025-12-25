@@ -26,7 +26,7 @@ pip install -r requirements.txt
 make gen
 
 # Start server
-python server.py
+python -m tiny_cache.server
 ```
 
 ### Docker
@@ -44,9 +44,19 @@ Environment variables:
 |----------|---------|-------------|
 | `CACHE_MAX_ITEMS` | 1000 | Maximum number of cache entries |
 | `CACHE_MAX_MEMORY_MB` | 100 | Memory limit in megabytes |
+| `CACHE_MAX_VALUE_BYTES` | `CACHE_MAX_MEMORY_MB * 1024 * 1024` | Maximum per-entry value size |
 | `CACHE_CLEANUP_INTERVAL` | 10 | TTL cleanup interval in seconds |
 | `CACHE_PORT` | 50051 | gRPC server port |
 | `CACHE_HOST` | `[::]` | Server bind address |
+| `CACHE_HEALTH_HOST` | `0.0.0.0` | Health/metrics bind address |
+| `CACHE_HEALTH_PORT` | 8080 | Health/metrics HTTP port |
+| `CACHE_LOG_LEVEL` | `INFO` | Log level |
+| `CACHE_LOG_FORMAT` | `text` | Log format (`text` or `json`) |
+| `CACHE_TLS_ENABLED` | `false` | Enable gRPC TLS |
+| `CACHE_TLS_CERT_PATH` | (unset) | TLS certificate path |
+| `CACHE_TLS_KEY_PATH` | (unset) | TLS private key path |
+| `CACHE_TLS_REQUIRE_CLIENT_AUTH` | `false` | Require client certificates (mTLS) |
+| `CACHE_TLS_CLIENT_CA_PATH` | (unset) | Client CA bundle for mTLS |
 
 ## API
 

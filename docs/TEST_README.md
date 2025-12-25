@@ -213,7 +213,7 @@ pytest
 
 ```python
 import pytest
-from cache_store import CacheStore
+from tiny_cache.cache_store import CacheStore
 
 class TestNewFeature:
     """Test cases for new feature."""
