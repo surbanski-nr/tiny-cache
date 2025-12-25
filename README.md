@@ -14,6 +14,8 @@ A lightweight gRPC cache service designed to work as a sidecar. Provides in-memo
 
 ### Local Development
 
+Local development is tested with Python 3.11 (matching the Docker image). See `.python-version`.
+
 ```bash
 # Setup environment
 python3 -m venv venv
