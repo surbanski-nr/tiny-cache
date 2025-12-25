@@ -24,8 +24,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --from=builder /build/*.py ./
-COPY --from=builder /build/cache_pb2.py ./
-COPY --from=builder /build/cache_pb2_grpc.py ./
 
 RUN chown -R cache:cache /app
 USER cache
