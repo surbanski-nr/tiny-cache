@@ -18,7 +18,7 @@ def check_venv():
     if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
         print("WARNING: Virtual environment is not activated!")
         print("   Please run: . ./venv/bin/activate")
-        print("   Then install dependencies: pip install -r requirements.txt")
+        print("   Then install dependencies: pip install -r requirements-dev.txt")
         return False
     return True
 
@@ -80,7 +80,7 @@ def main():
         sys.exit(1)
     
     # Build pytest command
-    cmd = ["python", "-m", "pytest"]
+    cmd = [sys.executable, "-m", "pytest"]
     
     if args.verbose:
         cmd.append("-v")
@@ -89,10 +89,22 @@ def main():
         cmd.extend(["--cov=cache_store", "--cov=server", "--cov-report=term-missing"])
     
     # Add test selection
+    unit_test_paths = [
+        str(Path("tests/test_cache_entry.py")),
+        str(Path("tests/test_cache_store.py")),
+    ]
+    integration_test_paths = []
+    integration_dir = Path("tests/integration")
+    if integration_dir.exists():
+        integration_test_paths.append(str(integration_dir))
+
     if args.unit:
-        cmd.extend(["-m", "unit"])
+        cmd.extend(unit_test_paths)
     elif args.integration:
-        cmd.extend(["-m", "integration"])
+        if not integration_test_paths:
+            print("ERROR: No integration tests found in tests/integration/")
+            sys.exit(1)
+        cmd.extend(integration_test_paths)
     elif args.fast:
         cmd.extend(["-m", "not slow"])
     
@@ -106,9 +118,8 @@ def main():
     
     # If no specific tests selected, run appropriate default
     if not any([args.unit, args.integration, args.fast, args.file, args.test]):
-        # Run unit tests that work without protobuf issues
         print("No specific test type selected. Running unit tests...")
-        cmd.extend(["tests/test_cache_entry.py", "tests/test_cache_store.py"])
+        cmd.extend(unit_test_paths)
     
     # Run the tests
     success = run_command(cmd, "Running tests")
@@ -119,7 +130,7 @@ def main():
         # Provide helpful next steps
         print("\nAvailable test commands:")
         print("   python run_tests.py --unit          # Run unit tests only")
-        print("   python run_tests.py --integration   # Run integration tests")
+        print("   python run_tests.py --integration   # Run integration tests (tests/integration/)")
         print("   python run_tests.py --coverage      # Run with coverage report")
         print("   python run_tests.py --file tests/test_cache_store.py  # Run specific file")
         print("   python run_tests.py --test test_set_and_get     # Run specific test")
