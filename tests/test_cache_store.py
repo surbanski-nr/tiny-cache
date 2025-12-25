@@ -88,6 +88,32 @@ class TestCacheStore:
         retrieved_value = self.cache.get(key)
         assert retrieved_value is None
         assert self.cache.misses == 1
+
+    def test_set_with_zero_ttl_is_treated_as_no_ttl(self):
+        """Test setting a value with ttl=0 is treated as no TTL."""
+        key = "zero_ttl_key"
+        value = "zero_ttl_value"
+
+        result = self.cache.set(key, value, ttl=0)
+        assert result is True
+
+        with self.cache.lock:
+            assert self.cache.store[key].ttl is None
+
+        assert self.cache.get(key) == value
+
+    def test_set_with_negative_ttl_is_treated_as_no_ttl(self):
+        """Test setting a value with ttl<0 is treated as no TTL."""
+        key = "negative_ttl_key"
+        value = "negative_ttl_value"
+
+        result = self.cache.set(key, value, ttl=-1)
+        assert result is True
+
+        with self.cache.lock:
+            assert self.cache.store[key].ttl is None
+
+        assert self.cache.get(key) == value
     
     def test_update_existing_key(self):
         """Test updating an existing key."""
