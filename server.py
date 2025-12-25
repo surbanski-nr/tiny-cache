@@ -52,18 +52,18 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return "unknown"
 
     async def Get(self, request, context):
-        start_time = time.time()
+        start_time = time.monotonic()
         client_addr = self._get_client_address(context)
         
         try:
             if not request.key:
-                self._log_request("GET", "", client_addr, (time.time() - start_time) * 1000, "INVALID_KEY")
+                self._log_request("GET", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheValue(found=False)
             
             value = store.get(request.key)
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             
             if value is None:
                 self._log_request("GET", request.key, client_addr, duration_ms, "MISS")
@@ -80,7 +80,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheValue(found=True, value=encoded_value)
         
         except Exception as e:
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("GET", request.key, client_addr, duration_ms, "ERROR")
             logger.error(f"Error in Get operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -88,12 +88,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheValue(found=False)
 
     async def Set(self, request, context):
-        start_time = time.time()
+        start_time = time.monotonic()
         client_addr = self._get_client_address(context)
         
         try:
             if not request.key:
-                self._log_request("SET", "", client_addr, (time.time() - start_time) * 1000, "INVALID_KEY")
+                self._log_request("SET", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheResponse(status="ERROR")
@@ -105,7 +105,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             
             ttl = request.ttl if request.ttl > 0 else None
             success = store.set(request.key, value, ttl=ttl)
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             
             if success:
                 ttl_info = f" ttl={ttl}s" if ttl else ""
@@ -118,7 +118,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 return cache_pb2.CacheResponse(status="ERROR")
         
         except Exception as e:
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("SET", request.key, client_addr, duration_ms, "ERROR")
             logger.error(f"Error in Set operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -126,25 +126,25 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheResponse(status="ERROR")
 
     async def Delete(self, request, context):
-        start_time = time.time()
+        start_time = time.monotonic()
         client_addr = self._get_client_address(context)
         
         try:
             if not request.key:
-                self._log_request("DELETE", "", client_addr, (time.time() - start_time) * 1000, "INVALID_KEY")
+                self._log_request("DELETE", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheResponse(status="ERROR")
             
             success = store.delete(request.key)
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             result = "OK" if success else "NOT_FOUND"
             
             self._log_request("DELETE", request.key, client_addr, duration_ms, result)
             return cache_pb2.CacheResponse(status=result)
         
         except Exception as e:
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("DELETE", request.key, client_addr, duration_ms, "ERROR")
             logger.error(f"Error in Delete operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -152,12 +152,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheResponse(status="ERROR")
 
     async def Stats(self, request, context):
-        start_time = time.time()
+        start_time = time.monotonic()
         client_addr = self._get_client_address(context)
         
         try:
             stats = store.stats()
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             
             if "error" in stats:
                 self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
@@ -175,7 +175,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             )
         
         except Exception as e:
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
             logger.error(f"Error in Stats operation: {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -217,7 +217,7 @@ class HealthCheckServer:
     def __init__(self, cache_store, service_instance):
         self.cache_store = cache_store
         self.service_instance = service_instance
-        self.start_time = time.time()
+        self.start_time = time.monotonic()
         
     async def health_check(self, request):
         """Combined health check endpoint for both readiness and liveness"""
@@ -233,7 +233,7 @@ class HealthCheckServer:
                     content_type="application/json"
                 )
             
-            uptime = time.time() - self.start_time
+            uptime = time.monotonic() - self.start_time
             response_data = {
                 "status": "healthy",
                 "uptime_seconds": round(uptime, 2),
@@ -271,7 +271,7 @@ class HealthCheckServer:
         """Liveness probe - checks if service is alive and should not be restarted"""
         try:
             # Simple check - if we can respond, we're alive
-            uptime = time.time() - self.start_time
+            uptime = time.monotonic() - self.start_time
             response_data = {
                 "status": "alive",
                 "uptime_seconds": round(uptime, 2),

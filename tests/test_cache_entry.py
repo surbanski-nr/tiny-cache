@@ -19,7 +19,7 @@ class TestCacheEntry:
         assert entry.ttl is None
         assert isinstance(entry.created_at, float)
         assert entry.size_bytes == sys.getsizeof(value)
-        assert time.time() - entry.created_at < 1  # Created within last second
+        assert time.monotonic() - entry.created_at < 1  # Created within last second
     
     def test_cache_entry_creation_with_ttl(self):
         """Test creating a cache entry with TTL."""
@@ -100,9 +100,9 @@ class TestCacheEntry:
     
     def test_cache_entry_creation_time_accuracy(self):
         """Test that creation time is accurate."""
-        start_time = time.time()
+        start_time = time.monotonic()
         entry = CacheEntry("test")
-        end_time = time.time()
+        end_time = time.monotonic()
         
         assert start_time <= entry.created_at <= end_time
     
