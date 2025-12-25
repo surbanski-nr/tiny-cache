@@ -461,9 +461,9 @@ class TestCacheStore:
         # Mock the lock to raise an exception
         with patch.object(self.cache, 'lock') as mock_lock:
             mock_lock.__enter__.side_effect = Exception("Test exception")
-            
-            result = self.cache.stats()
-            assert "error" in result
+
+            with pytest.raises(Exception, match="Test exception"):
+                self.cache.stats()
     
     def test_stop_functionality(self):
         """Test the stop method."""
