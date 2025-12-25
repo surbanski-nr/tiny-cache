@@ -10,7 +10,7 @@ COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY cache.proto Makefile ./
-COPY cache_store.py server.py ./
+COPY cache_store.py server.py config.py ./
 
 RUN make gen
 
