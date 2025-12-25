@@ -51,7 +51,7 @@ store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_int
 
 class CacheService(cache_pb2_grpc.CacheServiceServicer):
     def __init__(self):
-        self.active_connections = 0
+        self.active_requests = 0
         
     def _log_request(self, operation, key, client_addr=None, duration_ms=None, result=None):
         """Log request details at DEBUG level"""
@@ -200,7 +200,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheStats(size=0, hits=0, misses=0)
 
 class ConnectionInterceptor(grpc.aio.ServerInterceptor):
-    """Interceptor to log client connections and disconnections"""
+    """Interceptor to track in-flight RPCs"""
     
     def __init__(self, service_instance):
         self.service_instance = service_instance
@@ -217,16 +217,20 @@ class ConnectionInterceptor(grpc.aio.ServerInterceptor):
         except Exception:
             logger.debug("Unable to parse invocation metadata", exc_info=True)
         
-        self.service_instance.active_connections += 1
-        logger.info(f"Client connected from {client_addr} (active connections: {self.service_instance.active_connections})")
+        self.service_instance.active_requests += 1
+        logger.debug(
+            f"RPC started from {client_addr} (active requests: {self.service_instance.active_requests})"
+        )
         
         try:
             response = await continuation(handler_call_details)
             return response
         finally:
             # Log disconnection
-            self.service_instance.active_connections -= 1
-            logger.info(f"Client disconnected from {client_addr} (active connections: {self.service_instance.active_connections})")
+            self.service_instance.active_requests -= 1
+            logger.debug(
+                f"RPC finished from {client_addr} (active requests: {self.service_instance.active_requests})"
+            )
 
 class HealthCheckServer:
     """HTTP server for Kubernetes health checks"""
@@ -249,7 +253,7 @@ class HealthCheckServer:
                 "cache_size": stats.get("size", 0),
                 "cache_hits": stats.get("hits", 0),
                 "cache_misses": stats.get("misses", 0),
-                "active_connections": self.service_instance.active_connections,
+                "active_requests": self.service_instance.active_requests,
                 "timestamp": time.time()
             }
             
