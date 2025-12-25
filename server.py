@@ -105,12 +105,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("SET", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
-                return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+                return cache_pb2.CacheResponse()
             if len(request.key) > MAX_KEY_LENGTH:
                 self._log_request("SET", request.key, client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
-                return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+                return cache_pb2.CacheResponse()
             
             try:
                 value = request.value.decode('utf-8')
@@ -129,7 +129,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("SET", request.key, client_addr, duration_ms, "FULL")
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
                 context.set_details("Cache is full and cannot accommodate new entry")
-                return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+                return cache_pb2.CacheResponse()
         
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -137,7 +137,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             logger.error(f"Error in Set operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
-            return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+            return cache_pb2.CacheResponse()
 
     async def Delete(self, request, context):
         start_time = time.monotonic()
@@ -148,12 +148,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("DELETE", "", client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Key cannot be empty")
-                return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+                return cache_pb2.CacheResponse()
             if len(request.key) > MAX_KEY_LENGTH:
                 self._log_request("DELETE", request.key, client_addr, (time.monotonic() - start_time) * 1000, "INVALID_KEY")
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
-                return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+                return cache_pb2.CacheResponse()
             
             deleted = await asyncio.to_thread(self.cache_store.delete, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -168,7 +168,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             logger.error(f"Error in Delete operation for key '{request.key}': {e}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
-            return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.ERROR)
+            return cache_pb2.CacheResponse()
 
     async def Stats(self, request, context):
         start_time = time.monotonic()
