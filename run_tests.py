@@ -61,7 +61,6 @@ def main():
     parser = argparse.ArgumentParser(description="Run tests for tiny-cache project")
     parser.add_argument("--unit", action="store_true", help="Run only unit tests")
     parser.add_argument("--integration", action="store_true", help="Run only integration tests")
-    parser.add_argument("--mock", action="store_true", help="Run only mocked gRPC tests")
     parser.add_argument("--fast", action="store_true", help="Run only fast tests (exclude slow)")
     parser.add_argument("--coverage", action="store_true", help="Run with coverage report")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
@@ -105,12 +104,8 @@ def main():
     elif args.test:
         cmd.extend(["-k", args.test])
     
-    # Special handling for mock tests
-    if args.mock:
-        cmd.append("tests/test_grpc_service_mock.py")
-    
     # If no specific tests selected, run appropriate default
-    if not any([args.unit, args.integration, args.fast, args.file, args.test, args.mock]):
+    if not any([args.unit, args.integration, args.fast, args.file, args.test]):
         # Run unit tests that work without protobuf issues
         print("No specific test type selected. Running unit tests...")
         cmd.extend(["tests/test_cache_entry.py", "tests/test_cache_store.py"])
@@ -125,7 +120,6 @@ def main():
         print("\nAvailable test commands:")
         print("   python run_tests.py --unit          # Run unit tests only")
         print("   python run_tests.py --integration   # Run integration tests")
-        print("   python run_tests.py --mock          # Run mocked gRPC tests")
         print("   python run_tests.py --coverage      # Run with coverage report")
         print("   python run_tests.py --file tests/test_cache_store.py  # Run specific file")
         print("   python run_tests.py --test test_set_and_get     # Run specific test")

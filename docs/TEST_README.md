@@ -6,8 +6,7 @@ This document provides comprehensive information about testing the tiny-cache pr
 
 The tiny-cache project includes comprehensive test coverage for:
 - **Unit Tests**: Individual components (CacheEntry, CacheStore)
-- **Integration Tests**: gRPC service layer with real cache store
-- **Mocked Tests**: gRPC service layer with mocked dependencies
+- **Integration Tests**: Not currently implemented for the gRPC/HTTP layers
 
 ## Test Structure
 
@@ -38,7 +37,7 @@ pip install -r requirements-dev.txt
 ```
 
 **Note**: We use separate requirements files:
-- `requirements.txt` - Production dependencies only (grpcio, grpcio-tools)
+- `requirements.txt` - Production dependencies only (grpcio, protobuf, aiohttp)
 - `requirements-dev.txt` - Development dependencies (includes pytest, coverage tools, linting)
 
 ### 2. Generate Protobuf Files (Optional)
@@ -50,7 +49,7 @@ For full integration tests, generate the protobuf files:
 make gen
 ```
 
-If you don't have the protobuf files generated, you can still run most tests using the mocked versions.
+Note: the generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are checked into this repo.
 
 ## Running Tests
 
@@ -134,15 +133,9 @@ Tests are organized using pytest markers:
 - Memory tracking accuracy
 - Cache clearing
 
-### gRPC Service Tests (`test_grpc_service_mock.py`)
+### gRPC Service Tests
 
-- Get operations (existing/non-existent keys, different value types)
-- Set operations (with/without TTL, cache full scenarios)
-- Delete operations (existing/non-existent keys)
-- Stats operations
-- Error handling and validation
-- Full workflow integration tests
-- TTL integration tests
+Not currently implemented.
 
 ## Expected Test Results
 
@@ -157,9 +150,6 @@ test_cache_entry.py::TestCacheEntry::test_cache_entry_creation_with_ttl PASSED
 ...
 test_cache_store.py::TestCacheStore::test_set_and_get_basic_functionality PASSED
 test_cache_store.py::TestCacheStore::test_get_nonexistent_key PASSED
-...
-test_grpc_service_mock.py::TestCacheServiceMocked::test_get_existing_key_string_value PASSED
-...
 
 ================================ 45 passed in 2.34s ================================
 ```
@@ -179,8 +169,6 @@ test_grpc_service_mock.py::TestCacheServiceMocked::test_get_existing_key_string_
    ```bash
    # Generate protobuf files
    make gen
-   # Or run only the mocked tests
-   pytest test_grpc_service_mock.py
    ```
 
 3. **Tests hanging or taking too long**
