@@ -98,24 +98,38 @@ class TestCacheStore:
     
     def test_set_with_ttl(self):
         """Test setting a value with TTL."""
+        class FakeClock:
+            def __init__(self):
+                self.now = 0.0
+
+            def __call__(self):
+                return self.now
+
+            def advance(self, seconds: float):
+                self.now += seconds
+
         key = "ttl_key"
         value = "ttl_value"
         ttl = 1  # 1 second
-        
-        result = self.cache.set(key, value, ttl=ttl)
+
+        clock = FakeClock()
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10, clock=clock)
+
+        result = cache.set(key, value, ttl=ttl)
         assert result is True
         
         # Should be available immediately
-        retrieved_value = self.cache.get(key)
+        retrieved_value = cache.get(key)
         assert retrieved_value == value
-        
-        # Wait for TTL to expire
-        time.sleep(1.1)
+
+        # Advance time past TTL
+        clock.advance(1.1)
         
         # Should be expired now
-        retrieved_value = self.cache.get(key)
+        retrieved_value = cache.get(key)
         assert retrieved_value is None
-        assert self.cache.misses == 1
+        assert cache.misses == 1
+        cache.stop()
 
     def test_set_with_zero_ttl_is_treated_as_no_ttl(self):
         """Test setting a value with ttl=0 is treated as no TTL."""
@@ -397,17 +411,32 @@ class TestCacheStore:
     
     def test_is_expired_functionality(self):
         """Test the _is_expired method."""
+        class FakeClock:
+            def __init__(self):
+                self.now = 0.0
+
+            def __call__(self):
+                return self.now
+
+            def advance(self, seconds: float):
+                self.now += seconds
+
+        clock = FakeClock()
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10, clock=clock)
+
         # Create entry with TTL
-        entry_with_ttl = CacheEntry("value", ttl=1)
-        assert not self.cache._is_expired(entry_with_ttl)
-        
-        # Wait for expiration
-        time.sleep(1.1)
-        assert self.cache._is_expired(entry_with_ttl)
+        entry_with_ttl = CacheEntry("value", ttl=1, created_at=clock())
+        assert not cache._is_expired(entry_with_ttl)
+
+        # Advance time past TTL
+        clock.advance(1.1)
+        assert cache._is_expired(entry_with_ttl)
         
         # Create entry without TTL
-        entry_without_ttl = CacheEntry("value")
-        assert not self.cache._is_expired(entry_without_ttl)
+        entry_without_ttl = CacheEntry("value", created_at=clock())
+        assert not cache._is_expired(entry_without_ttl)
+
+        cache.stop()
     
     def test_background_cleanup_thread(self):
         """Test that the background cleanup thread works."""
