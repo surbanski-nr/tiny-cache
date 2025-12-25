@@ -7,8 +7,8 @@ import pytest_asyncio
 
 import cache_pb2
 import cache_pb2_grpc
-from cache_store import CacheStore
-from server import CacheService
+from tiny_cache.cache_store import CacheStore
+from tiny_cache.server import CacheService
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]

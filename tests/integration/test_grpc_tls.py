@@ -5,8 +5,8 @@ import pytest
 
 import cache_pb2
 import cache_pb2_grpc
-from cache_store import CacheStore
-from server import CacheService, build_tls_server_credentials
+from tiny_cache.cache_store import CacheStore
+from tiny_cache.server import CacheService, build_tls_server_credentials
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
