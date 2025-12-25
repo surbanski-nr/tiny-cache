@@ -85,7 +85,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheValue(found=False)
             
-            value = store.get(request.key)
+            value = await asyncio.to_thread(store.get, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             if value is None:
@@ -127,7 +127,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 value = request.value
             
             ttl = request.ttl if request.ttl > 0 else None
-            success = store.set(request.key, value, ttl=ttl)
+            success = await asyncio.to_thread(store.set, request.key, value, ttl=ttl)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             if success:
@@ -159,7 +159,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details("Key cannot be empty")
                 return cache_pb2.CacheResponse(status="ERROR")
             
-            success = store.delete(request.key)
+            success = await asyncio.to_thread(store.delete, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
             result = "OK" if success else "NOT_FOUND"
             
@@ -179,7 +179,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         client_addr = self._get_client_address(context)
         
         try:
-            stats = store.stats()
+            stats = await asyncio.to_thread(store.stats)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             result = f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} misses={stats.get('misses', 0)}"
@@ -235,7 +235,7 @@ class HealthCheckServer:
         """Combined health check endpoint for both readiness and liveness"""
         try:
             # Check if cache store is responsive
-            stats = self.cache_store.stats()
+            stats = await asyncio.to_thread(self.cache_store.stats)
             
             uptime = time.monotonic() - self.start_time
             response_data = {
