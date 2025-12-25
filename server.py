@@ -396,7 +396,7 @@ class HealthCheckServer:
             
         except Exception as e:
             # Always log health check errors at ERROR level
-            logger.error(f"Health check error: {e}")
+            logger.exception(f"Health check error: {e}")
             return web.Response(
                 text=json.dumps({"status": "error", "message": str(e)}),
                 status=503,
@@ -428,7 +428,7 @@ class HealthCheckServer:
             )
             
         except Exception as e:
-            logger.error(f"Liveness check error: {e}")
+            logger.exception(f"Liveness check error: {e}")
             return web.Response(
                 text=json.dumps({"status": "error", "message": str(e)}),
                 status=503,
