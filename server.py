@@ -242,10 +242,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheResponse()
             
-            try:
-                value = request.value.decode('utf-8')
-            except UnicodeDecodeError:
-                value = request.value
+            value = request.value
             
             ttl = request.ttl if request.ttl > 0 else None
             success = await asyncio.to_thread(self.cache_store.set, request.key, value, ttl=ttl)
