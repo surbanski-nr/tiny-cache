@@ -120,5 +120,5 @@ spec:
       app: tiny-cache
   endpoints:
   - port: http-health
-    path: /health
+    path: /metrics
     interval: 30s
