@@ -106,6 +106,78 @@ class TestCacheStore:
         # Should still be one item in cache
         stats = self.cache.stats()
         assert stats["size"] == 1
+
+    def test_update_existing_key_at_capacity_does_not_evict_or_corrupt_memory(self):
+        """Test updating a key at capacity does not evict other keys or break memory tracking."""
+        cache = CacheStore(max_items=3, max_memory_mb=10, cleanup_interval=10)
+
+        cache.set("key1", "value1")
+        cache.set("key2", "value2")
+        cache.set("key3", "value3")
+
+        stats_before = cache.stats()
+        assert stats_before["size"] == 3
+        assert stats_before["evictions"] == 0
+        with cache.lock:
+            assert cache.current_memory_bytes == sum(e.size_bytes for e in cache.store.values())
+
+        cache.set("key1", "value1_updated")
+
+        stats_after = cache.stats()
+        assert stats_after["size"] == 3
+        assert stats_after["evictions"] == 0
+        assert cache.get("key1") == "value1_updated"
+        assert cache.get("key2") == "value2"
+        assert cache.get("key3") == "value3"
+        with cache.lock:
+            assert cache.current_memory_bytes == sum(e.size_bytes for e in cache.store.values())
+
+        cache.stop()
+
+    def test_update_existing_key_restores_old_entry_when_value_too_large(self):
+        """Test updating a key restores the old value when the new value exceeds max memory."""
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+        cache.set("key", "small")
+
+        too_large_value = "x" * (2 * 1024 * 1024)  # > 1MB
+        result = cache.set("key", too_large_value)
+
+        assert result is False
+        assert cache.get("key") == "small"
+        with cache.lock:
+            assert cache.current_memory_bytes == sum(e.size_bytes for e in cache.store.values())
+
+        cache.stop()
+
+    def test_update_existing_key_restores_old_entry_when_eviction_fails(self):
+        """Test updating a key restores the old value when eviction fails."""
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+        cache.set("key1", "value1")
+        cache.set("key2", "value2")
+
+        size_value2 = sys.getsizeof("value2")
+        size_new = sys.getsizeof("value1_updated")
+        cache.max_memory_bytes = size_value2 + size_new - 1
+
+        with patch.object(cache, "_evict_to_fit", return_value=False):
+            result = cache.set("key1", "value1_updated")
+
+        assert result is False
+        assert cache.get("key1") == "value1"
+        assert cache.get("key2") == "value2"
+        with cache.lock:
+            assert cache.current_memory_bytes == sum(e.size_bytes for e in cache.store.values())
+
+        cache.stop()
+
+    def test_set_returns_false_when_max_items_is_zero(self):
+        """Test set fails fast when max_items is set to 0."""
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+        cache.max_items = 0
+
+        assert cache.set("key", "value") is False
+
+        cache.stop()
     
     def test_delete_existing_key(self):
         """Test deleting an existing key."""

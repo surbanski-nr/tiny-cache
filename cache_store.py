@@ -56,20 +56,31 @@ class CacheStore:
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         try:
             with self.lock:
-                entry = CacheEntry(value, ttl)
-                
-                if key in self.store:
-                    old_entry = self.store[key]
+                old_entry = self.store.pop(key, None)
+                if old_entry is not None:
                     self.current_memory_bytes -= old_entry.size_bytes
-                
+
+                entry = CacheEntry(value, ttl)
+
+                if entry.size_bytes > self.max_memory_bytes:
+                    if old_entry is not None:
+                        self.store[key] = old_entry
+                        self.current_memory_bytes += old_entry.size_bytes
+                    return False
+
                 if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
                     if not self._evict_to_fit(entry.size_bytes):
+                        if old_entry is not None:
+                            self.store[key] = old_entry
+                            self.current_memory_bytes += old_entry.size_bytes
                         return False
-                
-                while len(self.store) >= self.max_items:
-                    if not self._evict_lru():
-                        return False
-                
+
+                is_new_key = old_entry is None
+                if is_new_key:
+                    while len(self.store) >= self.max_items:
+                        if not self._evict_lru():
+                            return False
+
                 self.store[key] = entry
                 self.current_memory_bytes += entry.size_bytes
                 self.store.move_to_end(key)
