@@ -38,6 +38,11 @@ message CacheStats {
   int32 size = 1;
   int32 hits = 2;
   int32 misses = 3;
+  int32 evictions = 4;
+  double hit_rate = 5;
+  int64 memory_usage_bytes = 6;
+  int64 max_memory_bytes = 7;
+  int32 max_items = 8;
 }
 
 message Empty {}

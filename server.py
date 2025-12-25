@@ -184,7 +184,12 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheStats(
                 size=stats.get("size", 0),
                 hits=stats.get("hits", 0),
-                misses=stats.get("misses", 0)
+                misses=stats.get("misses", 0),
+                evictions=stats.get("evictions", 0),
+                hit_rate=stats.get("hit_rate", 0.0),
+                memory_usage_bytes=stats.get("memory_usage_bytes", 0),
+                max_memory_bytes=int(self.cache_store.max_memory_bytes),
+                max_items=int(self.cache_store.max_items),
             )
         
         except Exception as e:
@@ -193,7 +198,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
             logger.error(f"Error in Stats operation: {e}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
-            return cache_pb2.CacheStats(size=0, hits=0, misses=0)
+            return cache_pb2.CacheStats()
 
 class ConnectionInterceptor(grpc.aio.ServerInterceptor):
     """Interceptor to track in-flight RPCs"""
