@@ -3,14 +3,16 @@ services:
     build:
       context: .
     container_name: cache-service
+    restart: unless-stopped
     ports:
-      - "50051:50051"
-      - "8080:8080"
+      - "${CACHE_PORT:-50051}:${CACHE_PORT:-50051}"
+      - "${CACHE_HEALTH_PORT:-8080}:${CACHE_HEALTH_PORT:-8080}"
     environment:
-      - CACHE_LOG_LEVEL=DEBUG
-      - CACHE_HEALTH_PORT=8080
+      - CACHE_LOG_LEVEL=${CACHE_LOG_LEVEL:-INFO}
+      - CACHE_PORT=${CACHE_PORT:-50051}
+      - CACHE_HEALTH_PORT=${CACHE_HEALTH_PORT:-8080}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${CACHE_HEALTH_PORT:-8080}/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
