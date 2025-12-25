@@ -9,7 +9,7 @@ class CacheEntry:
     def __init__(self, value: Any, ttl: Optional[int] = None):
         self.value = value
         self.ttl = None if ttl is not None and ttl <= 0 else ttl
-        self.created_at = time.time()
+        self.created_at = time.monotonic()
         self.size_bytes = sys.getsizeof(value)
 
 class CacheStore:
@@ -32,7 +32,7 @@ class CacheStore:
     def _is_expired(self, entry: CacheEntry) -> bool:
         if entry.ttl is None:
             return False
-        return (time.time() - entry.created_at) > entry.ttl
+        return (time.monotonic() - entry.created_at) > entry.ttl
 
     def get(self, key: str) -> Optional[Any]:
         try:
