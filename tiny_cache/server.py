@@ -47,6 +47,7 @@ class JsonFormatter(logging.Formatter):
 class Settings:
     max_items: int
     max_memory_mb: int
+    max_value_bytes: int
     cleanup_interval: int
     port: int
     host: str
@@ -79,9 +80,18 @@ def configure_logging(log_level: str, log_format: str = "text") -> None:
 
 
 def load_settings() -> Settings:
+    max_memory_mb = get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1)
+    max_memory_bytes = max_memory_mb * 1024 * 1024
+
     return Settings(
         max_items=get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1),
-        max_memory_mb=get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1),
+        max_memory_mb=max_memory_mb,
+        max_value_bytes=get_env_int(
+            "CACHE_MAX_VALUE_BYTES",
+            max_memory_bytes,
+            min_value=1,
+            max_value=max_memory_bytes,
+        ),
         cleanup_interval=get_env_int("CACHE_CLEANUP_INTERVAL", 10, min_value=1),
         port=get_env_int("CACHE_PORT", 50051, min_value=1, max_value=65535),
         host=os.getenv("CACHE_HOST", "[::]"),
@@ -522,6 +532,7 @@ async def serve(settings: Settings | None = None):
     cache_store = CacheStore(
         max_items=settings.max_items,
         max_memory_mb=settings.max_memory_mb,
+        max_value_bytes=settings.max_value_bytes,
         cleanup_interval=settings.cleanup_interval,
     )
     service_instance = CacheService(cache_store)
