@@ -5,6 +5,8 @@ from threading import Lock, Thread, Event
 from collections import OrderedDict
 from typing import Optional, Dict, Any
 
+MAX_KEY_LENGTH = 256
+
 class CacheEntry:
     def __init__(self, value: Any, ttl: Optional[int] = None):
         self.value = value
@@ -61,72 +63,70 @@ class CacheStore:
             return False
         return (time.monotonic() - entry.created_at) > entry.ttl
 
+    def _validate_key(self, key: str) -> None:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string")
+        if not key:
+            raise ValueError("key cannot be empty")
+        if len(key) > MAX_KEY_LENGTH:
+            raise ValueError(f"key length must be <= {MAX_KEY_LENGTH}")
+
     def get(self, key: str) -> Optional[Any]:
-        try:
-            with self.lock:
-                if key not in self.store:
-                    self.misses += 1
-                    return None
-                
-                entry = self.store[key]
-                if self._is_expired(entry):
-                    self.misses += 1
-                    self._remove_entry(key)
-                    return None
-                
-                self.store.move_to_end(key)
-                self.hits += 1
-                return entry.value
-        except Exception as e:
-            print(f"Error in cache get: {e}")
-            self.misses += 1
-            return None
+        self._validate_key(key)
+        with self.lock:
+            if key not in self.store:
+                self.misses += 1
+                return None
+
+            entry = self.store[key]
+            if self._is_expired(entry):
+                self.misses += 1
+                self._remove_entry(key)
+                return None
+
+            self.store.move_to_end(key)
+            self.hits += 1
+            return entry.value
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
-        try:
-            with self.lock:
-                old_entry = self.store.pop(key, None)
+        self._validate_key(key)
+        with self.lock:
+            old_entry = self.store.pop(key, None)
+            if old_entry is not None:
+                self.current_memory_bytes -= old_entry.size_bytes
+
+            entry = CacheEntry(value, ttl)
+
+            if entry.size_bytes > self.max_memory_bytes:
                 if old_entry is not None:
-                    self.current_memory_bytes -= old_entry.size_bytes
+                    self.store[key] = old_entry
+                    self.current_memory_bytes += old_entry.size_bytes
+                return False
 
-                entry = CacheEntry(value, ttl)
-
-                if entry.size_bytes > self.max_memory_bytes:
+            if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
+                if not self._evict_to_fit(entry.size_bytes):
                     if old_entry is not None:
                         self.store[key] = old_entry
                         self.current_memory_bytes += old_entry.size_bytes
                     return False
 
-                if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
-                    if not self._evict_to_fit(entry.size_bytes):
-                        if old_entry is not None:
-                            self.store[key] = old_entry
-                            self.current_memory_bytes += old_entry.size_bytes
+            is_new_key = old_entry is None
+            if is_new_key:
+                while len(self.store) >= self.max_items:
+                    if not self._evict_lru():
                         return False
 
-                is_new_key = old_entry is None
-                if is_new_key:
-                    while len(self.store) >= self.max_items:
-                        if not self._evict_lru():
-                            return False
-
-                self.store[key] = entry
-                self.current_memory_bytes += entry.size_bytes
-                self.store.move_to_end(key)
-                return True
-        except Exception as e:
-            print(f"Error in cache set: {e}")
-            return False
+            self.store[key] = entry
+            self.current_memory_bytes += entry.size_bytes
+            self.store.move_to_end(key)
+            return True
 
     def delete(self, key: str) -> bool:
-        try:
-            with self.lock:
-                if key in self.store:
-                    self._remove_entry(key)
-                    return True
-                return False
-        except Exception as e:
-            print(f"Error in cache delete: {e}")
+        self._validate_key(key)
+        with self.lock:
+            if key in self.store:
+                self._remove_entry(key)
+                return True
             return False
 
     def _remove_entry(self, key: str) -> None:
@@ -188,15 +188,12 @@ class CacheStore:
 
     def clear(self) -> None:
         """Clear all cache entries"""
-        try:
-            with self.lock:
-                self.store.clear()
-                self.current_memory_bytes = 0
-                self.hits = 0
-                self.misses = 0
-                self.evictions = 0
-        except Exception as e:
-            print(f"Error clearing cache: {e}")
+        with self.lock:
+            self.store.clear()
+            self.current_memory_bytes = 0
+            self.hits = 0
+            self.misses = 0
+            self.evictions = 0
 
     def stop(self) -> None:
         """Stop the cache and cleanup background thread"""

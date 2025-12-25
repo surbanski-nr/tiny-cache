@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from cache_store import CacheStore, CacheEntry
+from cache_store import CacheStore, CacheEntry, MAX_KEY_LENGTH
 
 
 class TestCacheStore:
@@ -250,6 +250,19 @@ class TestCacheStore:
         """Test deleting a non-existent key."""
         result = self.cache.delete("nonexistent_key")
         assert result is False
+
+    def test_key_validation(self):
+        """Test key validation rejects empty and oversized keys."""
+        with pytest.raises(ValueError, match="key cannot be empty"):
+            self.cache.set("", "value")
+        with pytest.raises(ValueError, match="key cannot be empty"):
+            self.cache.get("")
+        with pytest.raises(ValueError, match="key cannot be empty"):
+            self.cache.delete("")
+
+        too_long_key = "k" * (MAX_KEY_LENGTH + 1)
+        with pytest.raises(ValueError, match="key length must be <="):
+            self.cache.set(too_long_key, "value")
     
     def test_lru_eviction_by_item_count(self):
         """Test LRU eviction when max items is reached."""
@@ -459,28 +472,22 @@ class TestCacheStore:
         # Mock the store to raise an exception
         with patch.object(self.cache, 'store') as mock_store:
             mock_store.__contains__.side_effect = Exception("Test exception")
-            
-            result = self.cache.get("test_key")
-            assert result is None
-            assert self.cache.misses > 0
+            with pytest.raises(Exception, match="Test exception"):
+                self.cache.get("test_key")
     
     def test_error_handling_in_set(self):
         """Test error handling in set method."""
-        # Mock the store to raise an exception
-        with patch.object(self.cache, 'store') as mock_store:
-            mock_store.__contains__.side_effect = Exception("Test exception")
-            
-            result = self.cache.set("test_key", "test_value")
-            assert result is False
+        with patch.object(self.cache.store, 'pop', side_effect=Exception("Test exception")):
+            with pytest.raises(Exception, match="Test exception"):
+                self.cache.set("test_key", "test_value")
     
     def test_error_handling_in_delete(self):
         """Test error handling in delete method."""
         # Mock the store to raise an exception
         with patch.object(self.cache, 'store') as mock_store:
             mock_store.__contains__.side_effect = Exception("Test exception")
-            
-            result = self.cache.delete("test_key")
-            assert result is False
+            with pytest.raises(Exception, match="Test exception"):
+                self.cache.delete("test_key")
     
     def test_error_handling_in_stats(self):
         """Test error handling in stats method."""
