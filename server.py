@@ -30,8 +30,9 @@ HEALTH_PORT = get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=6553
 store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_interval=CLEANUP_INTERVAL)
 
 class CacheService(cache_pb2_grpc.CacheServiceServicer):
-    def __init__(self):
+    def __init__(self, cache_store: CacheStore | None = None):
         self.active_requests = 0
+        self.cache_store = cache_store or store
         
     def _log_request(self, operation, key, client_addr=None, duration_ms=None, result=None):
         """Log request details at DEBUG level"""
@@ -70,7 +71,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheValue(found=False)
             
-            value = await asyncio.to_thread(store.get, request.key)
+            value = await asyncio.to_thread(self.cache_store.get, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             if value is None:
@@ -117,7 +118,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 value = request.value
             
             ttl = request.ttl if request.ttl > 0 else None
-            success = await asyncio.to_thread(store.set, request.key, value, ttl=ttl)
+            success = await asyncio.to_thread(self.cache_store.set, request.key, value, ttl=ttl)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             if success:
@@ -154,7 +155,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
                 context.set_details(f"Key is too long (max {MAX_KEY_LENGTH})")
                 return cache_pb2.CacheResponse(status="ERROR")
             
-            success = await asyncio.to_thread(store.delete, request.key)
+            success = await asyncio.to_thread(self.cache_store.delete, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
             result = "OK" if success else "NOT_FOUND"
             
@@ -174,7 +175,7 @@ class CacheService(cache_pb2_grpc.CacheServiceServicer):
         client_addr = self._get_client_address(context)
         
         try:
-            stats = await asyncio.to_thread(store.stats)
+            stats = await asyncio.to_thread(self.cache_store.stats)
             duration_ms = (time.monotonic() - start_time) * 1000
             
             result = f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} misses={stats.get('misses', 0)}"
@@ -335,7 +336,7 @@ async def serve():
     logger.info("gRPC cache service started successfully")
     
     # Start HTTP health check server
-    health_app = await create_health_server(store, service_instance)
+    health_app = await create_health_server(service_instance.cache_store, service_instance)
     
     # Configure access logging - disable unless DEBUG level
     if LOG_LEVEL == 'DEBUG':
@@ -357,7 +358,7 @@ async def serve():
     
     def signal_handler():
         logger.info("Received shutdown signal, stopping cache service...")
-        store.stop()
+        service_instance.cache_store.stop()
         asyncio.create_task(server.stop(grace=5))
         asyncio.create_task(health_runner.cleanup())
     
@@ -371,7 +372,7 @@ async def serve():
         logger.info("Keyboard interrupt received")
     finally:
         logger.info("Cache service stopped")
-        store.stop()
+        service_instance.cache_store.stop()
         await health_runner.cleanup()
 
 if __name__ == "__main__":
