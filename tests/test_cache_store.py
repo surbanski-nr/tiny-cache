@@ -56,6 +56,20 @@ class TestCacheStore:
         with patch.dict('os.environ', {'CACHE_MAX_ITEMS': '0'}):
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be >= 1"):
                 get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1)
+
+    def test_get_env_bool_validation(self):
+        """Test bool env parsing helper provides clear errors."""
+        from config import get_env_bool
+
+        with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "not-a-bool"}):
+            with pytest.raises(ValueError, match="CACHE_TLS_ENABLED must be a boolean"):
+                get_env_bool("CACHE_TLS_ENABLED", False)
+
+        with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "true"}):
+            assert get_env_bool("CACHE_TLS_ENABLED", False) is True
+
+        with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "0"}):
+            assert get_env_bool("CACHE_TLS_ENABLED", True) is False
     
     def test_cache_store_initialization_custom_values(self):
         """Test CacheStore initialization with custom values."""

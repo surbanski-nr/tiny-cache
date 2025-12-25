@@ -8,6 +8,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from aiohttp import web
 import grpc
 from grpc_health.v1 import health as grpc_health
@@ -15,7 +16,7 @@ from grpc_health.v1 import health_pb2, health_pb2_grpc
 from grpc import StatusCode
 import cache_pb2, cache_pb2_grpc
 from cache_store import CacheStore, MAX_KEY_LENGTH
-from config import get_env_int
+from config import get_env_bool, get_env_int
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,11 @@ class Settings:
     health_port: int
     log_level: str
     log_format: str
+    tls_enabled: bool
+    tls_cert_path: str | None
+    tls_key_path: str | None
+    tls_require_client_auth: bool
+    tls_client_ca_path: str | None
 
 def configure_logging(log_level: str, log_format: str = "text") -> None:
     level = getattr(logging, log_level.upper(), logging.INFO)
@@ -83,7 +89,52 @@ def load_settings() -> Settings:
         health_port=get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535),
         log_level=os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
         log_format=os.getenv("CACHE_LOG_FORMAT", "text"),
+        tls_enabled=get_env_bool("CACHE_TLS_ENABLED", False),
+        tls_cert_path=os.getenv("CACHE_TLS_CERT_PATH"),
+        tls_key_path=os.getenv("CACHE_TLS_KEY_PATH"),
+        tls_require_client_auth=get_env_bool("CACHE_TLS_REQUIRE_CLIENT_AUTH", False),
+        tls_client_ca_path=os.getenv("CACHE_TLS_CLIENT_CA_PATH"),
     )
+
+
+def build_tls_server_credentials(
+    cert_path: str,
+    key_path: str,
+    *,
+    client_ca_path: str | None = None,
+    require_client_auth: bool = False,
+) -> grpc.ServerCredentials:
+    certificate_chain = Path(cert_path).read_bytes()
+    private_key = Path(key_path).read_bytes()
+
+    if require_client_auth:
+        if client_ca_path is None:
+            raise ValueError("CACHE_TLS_CLIENT_CA_PATH must be set when client auth is required")
+        root_certificates = Path(client_ca_path).read_bytes()
+        return grpc.ssl_server_credentials(
+            [(private_key, certificate_chain)],
+            root_certificates=root_certificates,
+            require_client_auth=True,
+        )
+
+    return grpc.ssl_server_credentials([(private_key, certificate_chain)])
+
+
+def add_grpc_listen_port(server: grpc.aio.Server, listen_addr: str, settings: Settings) -> int:
+    if settings.tls_enabled:
+        if not settings.tls_cert_path or not settings.tls_key_path:
+            raise ValueError(
+                "CACHE_TLS_CERT_PATH and CACHE_TLS_KEY_PATH must be set when TLS is enabled"
+            )
+        credentials = build_tls_server_credentials(
+            settings.tls_cert_path,
+            settings.tls_key_path,
+            client_ca_path=settings.tls_client_ca_path,
+            require_client_auth=settings.tls_require_client_auth,
+        )
+        return server.add_secure_port(listen_addr, credentials)
+
+    return server.add_insecure_port(listen_addr)
 
 def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServicer:
     servicer = grpc_health.HealthServicer()
@@ -483,9 +534,10 @@ async def serve(settings: Settings | None = None):
     grpc_health_servicer = add_grpc_health_service(server)
 
     listen_addr = f"{settings.host}:{settings.port}"
-    server.add_insecure_port(listen_addr)
+    add_grpc_listen_port(server, listen_addr, settings)
 
-    logger.info(f"Starting cache service on {listen_addr}")
+    transport = "TLS" if settings.tls_enabled else "insecure"
+    logger.info(f"Starting cache service on {listen_addr} ({transport})")
     logger.info(
         "Configuration: max_items=%s, max_memory_mb=%s, cleanup_interval=%s",
         settings.max_items,
