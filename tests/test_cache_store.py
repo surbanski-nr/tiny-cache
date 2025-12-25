@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cache_store import CacheStore, CacheEntry, MAX_KEY_LENGTH
 
 
+@pytest.mark.unit
 class TestCacheStore:
     """Test cases for the CacheStore class."""
     
