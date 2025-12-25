@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 class CacheEntry:
     def __init__(self, value: Any, ttl: Optional[int] = None):
         self.value = value
-        self.ttl = ttl
+        self.ttl = None if ttl is not None and ttl <= 0 else ttl
         self.created_at = time.time()
         self.size_bytes = sys.getsizeof(value)
 
@@ -30,7 +30,9 @@ class CacheStore:
         self.cleaner_thread.start()
 
     def _is_expired(self, entry: CacheEntry) -> bool:
-        return bool(entry.ttl and (time.time() - entry.created_at > entry.ttl))
+        if entry.ttl is None:
+            return False
+        return (time.time() - entry.created_at) > entry.ttl
 
     def get(self, key: str) -> Optional[Any]:
         try:

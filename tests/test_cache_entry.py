@@ -69,21 +69,31 @@ class TestCacheEntry:
         assert entry.size_bytes == sys.getsizeof(value)
     
     def test_cache_entry_creation_with_zero_ttl(self):
-        """Test creating a cache entry with zero TTL."""
+        """Test creating a cache entry with zero TTL is normalized to no TTL."""
         value = "test_value"
         ttl = 0
         entry = CacheEntry(value, ttl)
         
         assert entry.value == value
-        assert entry.ttl == ttl
+        assert entry.ttl is None
         assert entry.size_bytes == sys.getsizeof(value)
     
     def test_cache_entry_creation_with_negative_ttl(self):
-        """Test creating a cache entry with negative TTL."""
+        """Test creating a cache entry with negative TTL is normalized to no TTL."""
         value = "test_value"
         ttl = -1
         entry = CacheEntry(value, ttl)
         
+        assert entry.value == value
+        assert entry.ttl is None
+        assert entry.size_bytes == sys.getsizeof(value)
+
+    def test_cache_entry_creation_with_max_ttl_boundary(self):
+        """Test creating a cache entry with the max int32 TTL value."""
+        value = "test_value"
+        ttl = 2**31 - 1
+        entry = CacheEntry(value, ttl)
+
         assert entry.value == value
         assert entry.ttl == ttl
         assert entry.size_bytes == sys.getsizeof(value)
