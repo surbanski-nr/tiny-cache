@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
       - name: tiny-cache
-        image: tiny-cache:latest
+        image: tiny-cache:0.1.0
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 50051
           name: grpc
@@ -33,6 +34,8 @@ spec:
           value: "512"
         - name: CACHE_HEALTH_PORT
           value: "8080"
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
         resources:
           requests:
             memory: "256Mi"
@@ -67,6 +70,22 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 6
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
