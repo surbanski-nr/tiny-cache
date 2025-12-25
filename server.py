@@ -18,12 +18,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MAX_ITEMS = int(os.getenv('CACHE_MAX_ITEMS', '1000'))
-MAX_MEMORY_MB = int(os.getenv('CACHE_MAX_MEMORY_MB', '100'))
-CLEANUP_INTERVAL = int(os.getenv('CACHE_CLEANUP_INTERVAL', '10'))
-PORT = int(os.getenv('CACHE_PORT', '50051'))
+def _get_env_int(
+    env_name: str,
+    default_value: int,
+    *,
+    min_value: int | None = None,
+    max_value: int | None = None,
+) -> int:
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        value = default_value
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError as exc:
+            raise ValueError(f"{env_name} must be an integer, got {raw_value!r}") from exc
+
+    if min_value is not None and value < min_value:
+        raise ValueError(f"{env_name} must be >= {min_value}, got {value}")
+    if max_value is not None and value > max_value:
+        raise ValueError(f"{env_name} must be <= {max_value}, got {value}")
+    return value
+
+MAX_ITEMS = _get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1)
+MAX_MEMORY_MB = _get_env_int("CACHE_MAX_MEMORY_MB", 100, min_value=1)
+CLEANUP_INTERVAL = _get_env_int("CACHE_CLEANUP_INTERVAL", 10, min_value=1)
+PORT = _get_env_int("CACHE_PORT", 50051, min_value=1, max_value=65535)
 HOST = os.getenv('CACHE_HOST', '[::]')
-HEALTH_PORT = int(os.getenv('CACHE_HEALTH_PORT', '8080'))
+HEALTH_PORT = _get_env_int("CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535)
 
 store = CacheStore(max_items=MAX_ITEMS, max_memory_mb=MAX_MEMORY_MB, cleanup_interval=CLEANUP_INTERVAL)
 

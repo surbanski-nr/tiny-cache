@@ -14,9 +14,36 @@ class CacheEntry:
 
 class CacheStore:
     def __init__(self, max_items: Optional[int] = None, max_memory_mb: Optional[int] = None, cleanup_interval: Optional[int] = None):
-        self.max_items = max_items or int(os.getenv('CACHE_MAX_ITEMS', '1000'))
-        self.max_memory_bytes = (max_memory_mb or int(os.getenv('CACHE_MAX_MEMORY_MB', '100'))) * 1024 * 1024
-        self.cleanup_interval = cleanup_interval or int(os.getenv('CACHE_CLEANUP_INTERVAL', '10'))
+        def _resolve_int(
+            arg_value: Optional[int],
+            env_name: str,
+            default_value: int,
+            *,
+            min_value: Optional[int] = None,
+            max_value: Optional[int] = None,
+        ) -> int:
+            if arg_value is not None:
+                value = arg_value
+            else:
+                raw_value = os.getenv(env_name)
+                if raw_value is None:
+                    value = default_value
+                else:
+                    try:
+                        value = int(raw_value)
+                    except ValueError as exc:
+                        raise ValueError(f"{env_name} must be an integer, got {raw_value!r}") from exc
+
+            if min_value is not None and value < min_value:
+                raise ValueError(f"{env_name} must be >= {min_value}, got {value}")
+            if max_value is not None and value > max_value:
+                raise ValueError(f"{env_name} must be <= {max_value}, got {value}")
+            return value
+
+        self.max_items = _resolve_int(max_items, "CACHE_MAX_ITEMS", 1000, min_value=1)
+        resolved_max_memory_mb = _resolve_int(max_memory_mb, "CACHE_MAX_MEMORY_MB", 100, min_value=1)
+        self.max_memory_bytes = resolved_max_memory_mb * 1024 * 1024
+        self.cleanup_interval = _resolve_int(cleanup_interval, "CACHE_CLEANUP_INTERVAL", 10, min_value=1)
         
         self.store: OrderedDict[str, CacheEntry] = OrderedDict()
         self.current_memory_bytes = 0
