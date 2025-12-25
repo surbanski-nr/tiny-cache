@@ -68,6 +68,15 @@ async def test_health_endpoints_ok():
             ) as resp:
                 assert resp.headers.get("x-request-id") == "test-request-id"
 
+            async with session.get(f"http://127.0.0.1:{port}/metrics") as resp:
+                assert resp.status == 200
+                assert resp.headers.get("Content-Type", "").startswith("text/plain")
+                metrics = await resp.text()
+                assert "tiny_cache_hits_total 0" in metrics
+                assert "tiny_cache_misses_total 0" in metrics
+                assert "tiny_cache_evictions_total 0" in metrics
+                assert "tiny_cache_entries 0" in metrics
+
             async with session.get(f"http://127.0.0.1:{port}/") as resp:
                 assert resp.status == 200
                 payload = await resp.json()
@@ -98,6 +107,9 @@ async def test_health_endpoints_error_on_stats_exception():
                 body = await resp.text()
                 payload = json.loads(body)
                 assert payload["status"] == "error"
+
+            async with session.get(f"http://127.0.0.1:{port}/metrics") as resp:
+                assert resp.status == 503
     finally:
         await runner.cleanup()
         service.cache_store.stop()
