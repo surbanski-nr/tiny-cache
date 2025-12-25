@@ -323,6 +323,32 @@ class TestCacheStore:
         assert self.cache.get("key1") is None
         assert self.cache.get("key2") is None
         assert self.cache.get("key3") is None
+
+    def test_clear_resets_stats_counters(self):
+        """Test clearing the cache resets hits/misses/evictions counters."""
+        cache = CacheStore(max_items=2, max_memory_mb=1, cleanup_interval=10)
+        cache.set("key1", "value1")
+        cache.get("key1")  # Hit
+        cache.get("missing")  # Miss
+
+        cache.set("key2", "value2")
+        cache.set("key3", "value3")  # Evicts LRU key1
+
+        stats_before = cache.stats()
+        assert stats_before["hits"] == 1
+        assert stats_before["misses"] == 1
+        assert stats_before["evictions"] == 1
+
+        cache.clear()
+
+        stats_after = cache.stats()
+        assert stats_after["size"] == 0
+        assert stats_after["hits"] == 0
+        assert stats_after["misses"] == 0
+        assert stats_after["evictions"] == 0
+        assert stats_after["memory_usage_bytes"] == 0
+
+        cache.stop()
     
     def test_stats_functionality(self):
         """Test the stats method."""
