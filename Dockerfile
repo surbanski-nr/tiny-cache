@@ -2,17 +2,9 @@ FROM python:3.11-slim as builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir -r requirements-dev.txt
-
-COPY cache.proto Makefile ./
-COPY cache_store.py server.py config.py ./
-
-RUN make gen
+COPY cache.proto ./
+RUN pip install --no-cache-dir grpcio-tools>=1.76.0
+RUN python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. cache.proto
 
 FROM python:3.11-slim as production
 
@@ -23,7 +15,8 @@ RUN groupadd -r cache && useradd -r -g cache cache
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --from=builder /build/*.py ./
+COPY cache_store.py server.py config.py ./
+COPY --from=builder /build/cache_pb2.py /build/cache_pb2_grpc.py ./
 
 RUN chown -R cache:cache /app
 USER cache
