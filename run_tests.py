@@ -92,6 +92,7 @@ def main():
     unit_test_paths = [
         str(Path("tests/test_cache_entry.py")),
         str(Path("tests/test_cache_store.py")),
+        str(Path("tests/test_hex_architecture.py")),
     ]
     integration_test_paths = []
     integration_dir = Path("tests/integration")
@@ -118,8 +119,12 @@ def main():
     
     # If no specific tests selected, run appropriate default
     if not any([args.unit, args.integration, args.fast, args.file, args.test]):
-        print("No specific test type selected. Running unit tests...")
-        cmd.extend(unit_test_paths)
+        if args.coverage:
+            print("No specific test type selected. Running full test suite with coverage...")
+            cmd.append(str(Path("tests")))
+        else:
+            print("No specific test type selected. Running unit tests...")
+            cmd.extend(unit_test_paths)
     
     # Run the tests
     success = run_command(cmd, "Running tests")

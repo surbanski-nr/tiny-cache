@@ -3,7 +3,7 @@ import pytest
 import pytest_asyncio
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-from tiny_cache.server import add_grpc_health_service
+from tiny_cache.transport.grpc.health import add_grpc_health_service
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]

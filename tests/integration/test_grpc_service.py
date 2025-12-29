@@ -7,8 +7,9 @@ import pytest_asyncio
 
 import cache_pb2
 import cache_pb2_grpc
-from tiny_cache.cache_store import CacheStore
-from tiny_cache.server import CacheService
+from tiny_cache.application.service import CacheApplicationService
+from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -33,7 +34,8 @@ async def grpc_server():
     instances: list[tuple[grpc.aio.Server, grpc.aio.Channel, CacheStore]] = []
 
     async def _start(cache_store: CacheStore):
-        service = CacheService(cache_store)
+        cache_app = CacheApplicationService(cache_store)
+        service = GrpcCacheService(cache_app)
         server = grpc.aio.server()
         cache_pb2_grpc.add_CacheServiceServicer_to_server(service, server)
 

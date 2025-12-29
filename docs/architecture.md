@@ -25,9 +25,12 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 
 ## Repository Layout
 
-- `tiny_cache/cache_store.py`: in-memory cache implementation (`CacheStore`, `CacheEntry`)
-- `tiny_cache/server.py`: process composition/root; gRPC server + HTTP health/metrics server
-- `tiny_cache/config.py`: environment parsing helpers
+- `tiny_cache/domain/`: domain constraints and validation
+- `tiny_cache/application/`: use-cases and ports
+- `tiny_cache/transport/grpc/`: gRPC adapter
+- `tiny_cache/transport/http/`: HTTP health/metrics adapter
+- `tiny_cache/infrastructure/`: in-memory store, env parsing, logging, TLS helpers
+- `tiny_cache/main.py`: process composition root; wires and starts transports
 - `cache.proto`: gRPC schema (canonical API definition)
 - `cache_pb2.py`, `cache_pb2_grpc.py`: generated stubs (not tracked; produced via `make gen`)
 - `tests/`: unit + integration tests
@@ -35,7 +38,7 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 
 ## Runtime Components
 
-### Cache Store (`tiny_cache/cache_store.py`)
+### Cache Store (`tiny_cache/infrastructure/memory_store.py`)
 
 `CacheStore` is an in-memory key/value store with:
 
@@ -48,21 +51,21 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
   - `max_memory_bytes` (best-effort memory accounting)
   - `max_value_bytes` (per-entry limit)
 
-### gRPC Transport (`tiny_cache/server.py`)
+### gRPC Transport (`tiny_cache/transport/grpc/`)
 
-`CacheService` implements `cache.CacheService` using `grpc.aio`.
+`GrpcCacheService` implements `cache.CacheService` using `grpc.aio`.
 
 - Validates input (non-empty key, max key length)
 - Offloads store operations to a thread via `asyncio.to_thread()` to avoid blocking the event loop on `threading.Lock`
 - Uses gRPC status codes as the primary error contract (response bodies are meaningful only on success paths)
 
-### HTTP Health + Metrics Transport (`tiny_cache/server.py`)
+### HTTP Health + Metrics Transport (`tiny_cache/transport/http/health_app.py`)
 
 An `aiohttp` server provides Kubernetes-style endpoints and a Prometheus-compatible `/metrics` endpoint.
 
 Request IDs (`x-request-id`) are propagated or generated and returned in HTTP response headers.
 
-### TLS Support (`tiny_cache/server.py`)
+### TLS Support (`tiny_cache/infrastructure/tls.py`)
 
 gRPC TLS can be enabled via environment variables (see `docs/api-contract.md` and `docs/specification.md`). Optional client certificate enforcement enables mTLS.
 

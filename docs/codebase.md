@@ -4,7 +4,7 @@ This document is a quick orientation guide to the repository. For behavior detai
 
 ## What This Repo Contains
 
-- A gRPC cache service (`tiny_cache/server.py`) backed by an in-memory store (`tiny_cache/cache_store.py`)
+- A gRPC cache service (transport adapter under `tiny_cache/transport/grpc/`) backed by an in-memory store (`tiny_cache/infrastructure/memory_store.py`)
 - Protobuf schema (`cache.proto`) and generated Python stubs (generated via `make gen`)
 - Unit + integration tests (`tests/`)
 - Container and deployment manifests (Docker, docker-compose, Kubernetes example)
@@ -14,28 +14,30 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 ## How Requests Flow
 
 1. A client calls the gRPC service (`cache.CacheService`) defined in `cache.proto`.
-2. `tiny_cache/server.py` receives the request in `CacheService` (grpc.aio handler methods).
-3. The handler calls into `CacheStore` to read/write/delete entries.
+2. The gRPC adapter receives the request (`tiny_cache/transport/grpc/servicer.py`).
+3. The adapter calls the application service (`tiny_cache/application/service.py`) which uses the in-memory store.
 4. Responses are returned to gRPC clients; health/metrics are exposed via the HTTP server.
 
 ## Key Files
 
-- `tiny_cache/cache_store.py`
+- `tiny_cache/infrastructure/memory_store.py`
   - `CacheEntry`: stored value, TTL, creation time, best-effort size.
   - `CacheStore`: `get/set/delete/stats`, LRU eviction, optional cleanup thread.
-- `tiny_cache/server.py`
-  - gRPC adapter (`CacheService`)
+- `tiny_cache/transport/grpc/servicer.py`
+  - gRPC adapter (`GrpcCacheService`)
+- `tiny_cache/transport/http/health_app.py`
   - HTTP health/metrics adapter (`aiohttp` server)
-  - process lifecycle (signal handling, startup/shutdown)
-- `tiny_cache/config.py`
-  - env parsing helpers (`get_env_int`, `get_env_bool`)
+- `tiny_cache/main.py`
+  - process lifecycle (composition root)
+- `tiny_cache/infrastructure/config.py`
+  - env parsing helpers and settings loading
 - `cache.proto`
   - service definition and message schema (canonical gRPC contract)
 
 ## Development Entry Points
 
 - Generate protobuf stubs: `make gen`
-- Run locally: `python -m tiny_cache.server`
+- Run locally: `python -m tiny_cache`
 - Run tests:
   - Unit: `python run_tests.py --unit --coverage`
   - Integration: `python run_tests.py --integration --coverage`

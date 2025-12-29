@@ -5,8 +5,10 @@ import pytest
 
 import cache_pb2
 import cache_pb2_grpc
-from tiny_cache.cache_store import CacheStore
-from tiny_cache.server import CacheService, build_tls_server_credentials
+from tiny_cache.application.service import CacheApplicationService
+from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.infrastructure.tls import build_tls_server_credentials
+from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -17,7 +19,8 @@ async def test_grpc_tls_set_get_roundtrip():
     key_path = Path(__file__).resolve().parents[1] / "fixtures" / "tls" / "server.key"
 
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
-    service = CacheService(cache_store)
+    cache_app = CacheApplicationService(cache_store)
+    service = GrpcCacheService(cache_app)
 
     server = grpc.aio.server()
     cache_pb2_grpc.add_CacheServiceServicer_to_server(service, server)

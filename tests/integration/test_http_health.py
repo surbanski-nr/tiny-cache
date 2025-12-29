@@ -5,8 +5,10 @@ import aiohttp
 import pytest
 from aiohttp import web
 
-from tiny_cache.cache_store import CacheStore
-from tiny_cache.server import CacheService, create_health_server
+from tiny_cache.application.service import CacheApplicationService
+from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.transport.active_requests import ActiveRequests
+from tiny_cache.transport.http.health_app import create_health_app
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -29,8 +31,9 @@ async def _start_app(app: web.Application) -> tuple[web.AppRunner, int]:
 
 async def test_health_endpoints_ok():
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
-    service = CacheService(cache_store)
-    app = await create_health_server(cache_store, service, grpc_port=0)
+    cache_app = CacheApplicationService(cache_store)
+    active_requests = ActiveRequests()
+    app = await create_health_app(cache_app, active_requests, grpc_port=0)
 
     runner, port = await _start_app(app)
     try:
@@ -91,12 +94,13 @@ async def test_health_endpoints_ok():
 
 
 async def test_health_endpoints_error_on_stats_exception():
-    class BrokenStore:
+    class BrokenApp:
         def stats(self) -> dict[str, Any]:
             raise RuntimeError("boom")
 
-    service = CacheService(CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600))
-    app = await create_health_server(BrokenStore(), service, grpc_port=0)
+    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
+    active_requests = ActiveRequests()
+    app = await create_health_app(BrokenApp(), active_requests, grpc_port=0)
 
     runner, port = await _start_app(app)
     try:
@@ -112,4 +116,4 @@ async def test_health_endpoints_error_on_stats_exception():
                 assert resp.status == 503
     finally:
         await runner.cleanup()
-        service.cache_store.stop()
+        cache_store.stop()
