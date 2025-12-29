@@ -1,6 +1,6 @@
 # Specification
 
-This document describes the current behavior of tiny-cache as implemented in `tiny_cache/cache_store.py` and `tiny_cache/server.py`.
+This document describes the current behavior of tiny-cache as implemented across the hexagonal architecture layers under `tiny_cache/` (domain/application/transport/infrastructure) and wired by the composition root in `tiny_cache/main.py`.
 
 ## Trust Boundary
 
@@ -112,7 +112,7 @@ The cleanup loop:
 - Snapshots entries under lock, checks expirations outside the lock, then re-locks to remove expired keys
 - Logs exceptions and continues running
 
-The process root (`tiny_cache/server.py`) owns the lifecycle and stops the cleanup thread during shutdown.
+The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cleanup thread during shutdown.
 
 ## Protocol Surfaces
 

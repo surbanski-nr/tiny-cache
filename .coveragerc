@@ -1,0 +1,5 @@
+[run]
+omit =
+    tiny_cache/__main__.py
+    tiny_cache/main.py
+

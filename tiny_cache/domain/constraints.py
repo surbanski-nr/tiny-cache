@@ -1,0 +1,2 @@
+MAX_KEY_LENGTH = 256
+

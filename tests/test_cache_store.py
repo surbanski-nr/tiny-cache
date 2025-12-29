@@ -5,7 +5,8 @@ from queue import Queue
 from unittest.mock import patch
 import sys
 
-from tiny_cache.cache_store import CacheStore, CacheEntry, MAX_KEY_LENGTH
+from tiny_cache.domain.constraints import MAX_KEY_LENGTH
+from tiny_cache.infrastructure.memory_store import CacheEntry, CacheStore
 
 
 @pytest.mark.unit
@@ -46,7 +47,7 @@ class TestCacheStore:
 
     def test_get_env_int_validation(self):
         """Test env parsing helper provides clear errors."""
-        from tiny_cache.config import get_env_int
+        from tiny_cache.infrastructure.config import get_env_int
 
         with patch.dict('os.environ', {'CACHE_MAX_ITEMS': 'not-an-int'}):
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be an integer"):
@@ -58,7 +59,7 @@ class TestCacheStore:
 
     def test_get_env_bool_validation(self):
         """Test bool env parsing helper provides clear errors."""
-        from tiny_cache.config import get_env_bool
+        from tiny_cache.infrastructure.config import get_env_bool
 
         with patch.dict("os.environ", {"CACHE_TLS_ENABLED": "not-a-bool"}):
             with pytest.raises(ValueError, match="CACHE_TLS_ENABLED must be a boolean"):
@@ -72,7 +73,7 @@ class TestCacheStore:
 
     def test_load_settings_parses_max_value_bytes(self):
         """Test server settings enforce max value bytes bounds."""
-        from tiny_cache.server import load_settings
+        from tiny_cache.infrastructure.config import load_settings
 
         with patch.dict("os.environ", {"CACHE_MAX_MEMORY_MB": "1"}, clear=True):
             settings = load_settings()
@@ -301,15 +302,15 @@ class TestCacheStore:
 
     def test_key_validation(self):
         """Test key validation rejects empty and oversized keys."""
-        with pytest.raises(ValueError, match="key cannot be empty"):
+        with pytest.raises(ValueError, match="Key cannot be empty"):
             self.cache.set("", "value")
-        with pytest.raises(ValueError, match="key cannot be empty"):
+        with pytest.raises(ValueError, match="Key cannot be empty"):
             self.cache.get("")
-        with pytest.raises(ValueError, match="key cannot be empty"):
+        with pytest.raises(ValueError, match="Key cannot be empty"):
             self.cache.delete("")
 
         too_long_key = "k" * (MAX_KEY_LENGTH + 1)
-        with pytest.raises(ValueError, match="key length must be <="):
+        with pytest.raises(ValueError, match="Key is too long"):
             self.cache.set(too_long_key, "value")
     
     def test_lru_eviction_by_item_count(self):

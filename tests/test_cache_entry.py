@@ -2,7 +2,7 @@ import time
 import sys
 import pytest
 
-from tiny_cache.cache_store import CacheEntry
+from tiny_cache.infrastructure.memory_store import CacheEntry
 
 
 @pytest.mark.unit

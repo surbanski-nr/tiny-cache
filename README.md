@@ -26,7 +26,7 @@ pip install -r requirements.txt
 make gen
 
 # Start server
-python -m tiny_cache.server
+python -m tiny_cache
 ```
 
 ### Docker
