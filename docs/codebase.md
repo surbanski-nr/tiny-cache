@@ -39,8 +39,9 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 - Generate protobuf stubs: `make gen`
 - Run locally: `python -m tiny_cache`
 - Run tests:
-  - Unit: `python run_tests.py --unit --coverage`
-  - Integration: `python run_tests.py --integration --coverage`
+  - Unit: `pytest -m unit`
+  - Integration: `pytest -m integration`
+  - Coverage: `pytest --cov=tiny_cache --cov-report=term-missing`
 
 ## Related Documents
 

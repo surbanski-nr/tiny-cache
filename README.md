@@ -73,8 +73,11 @@ The service implements the following gRPC methods:
 # Activate environment
 . ./venv/bin/activate
 
+# Install dev dependencies (includes pytest)
+pip install -r requirements-dev.txt
+
 # Run tests with coverage
-python run_tests.py --coverage
+pytest --cov=tiny_cache --cov-report=term-missing
 ```
 
 ## License
