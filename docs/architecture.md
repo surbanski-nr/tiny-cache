@@ -8,11 +8,13 @@ tiny-cache is a sidecar-friendly cache service that exposes:
 - A small HTTP server for health probes and metrics (`/health`, `/ready`, `/live`, `/metrics`)
 - The standard gRPC health checking service (`grpc.health.v1.Health`)
 
-The cache is in-memory only and supports:
+The current implementation uses an in-memory backend and supports:
 
 - TTL-based expiration
 - LRU eviction
 - A best-effort memory limit based on Python object sizing
+
+Hexagonal note: transports call an application service (`tiny_cache/application/service.py`). The application depends on a cache backend port (`tiny_cache/application/ports.py`). The current in-memory backend (`tiny_cache/infrastructure/memory_store.py`) implements that port; future adapters can choose to leverage native backend behavior (so eviction/TTL/limit semantics are primarily owned by the backend implementation).
 
 ## Trust Boundary
 
@@ -29,7 +31,7 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 - `tiny_cache/application/`: use-cases and ports
 - `tiny_cache/transport/grpc/`: gRPC adapter
 - `tiny_cache/transport/http/`: HTTP health/metrics adapter
-- `tiny_cache/infrastructure/`: in-memory store, env parsing, logging, TLS helpers
+- `tiny_cache/infrastructure/`: cache backends, env parsing, logging, TLS helpers
 - `tiny_cache/main.py`: process composition root; wires and starts transports
 - `cache.proto`: gRPC schema (canonical API definition)
 - `cache_pb2.py`, `cache_pb2_grpc.py`: generated stubs (not tracked; produced via `make gen`)
@@ -40,7 +42,7 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 
 ### Cache Store (`tiny_cache/infrastructure/memory_store.py`)
 
-`CacheStore` is an in-memory key/value store with:
+`CacheStore` is the current in-memory implementation of the cache backend port (`CacheStorePort` in `tiny_cache/application/ports.py`) with:
 
 - `OrderedDict` to maintain LRU ordering
 - `threading.Lock` to protect concurrent access

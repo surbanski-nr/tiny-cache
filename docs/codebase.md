@@ -15,14 +15,16 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 
 1. A client calls the gRPC service (`cache.CacheService`) defined in `cache.proto`.
 2. The gRPC adapter receives the request (`tiny_cache/transport/grpc/servicer.py`).
-3. The adapter calls the application service (`tiny_cache/application/service.py`) which uses the in-memory store.
+3. The adapter calls the application service (`tiny_cache/application/service.py`) which uses a cache store port implementation (currently the in-memory store).
 4. Responses are returned to gRPC clients; health/metrics are exposed via the HTTP server.
 
 ## Key Files
 
 - `tiny_cache/infrastructure/memory_store.py`
   - `CacheEntry`: stored value, TTL, creation time, best-effort size.
-  - `CacheStore`: `get/set/delete/stats`, LRU eviction, optional cleanup thread.
+  - `CacheStore`: current in-memory backend implementing `CacheStorePort` with `get/set/delete/stats`, LRU eviction, optional cleanup thread.
+- `tiny_cache/application/ports.py`
+  - Cache backend port (`CacheStorePort`) implemented by infrastructure backends.
 - `tiny_cache/transport/grpc/servicer.py`
   - gRPC adapter (`GrpcCacheService`)
 - `tiny_cache/transport/http/health_app.py`
