@@ -2,6 +2,30 @@
 
 This document describes the current behavior of tiny-cache as implemented across the hexagonal architecture layers under `tiny_cache/` (domain/application/transport/infrastructure) and wired by the composition root in `tiny_cache/main.py`.
 
+## Contract vs Backend Semantics
+
+tiny-cache’s application layer depends on a cache backend port (`tiny_cache/application/ports.py`). The current concrete backend is the in-memory `CacheStore` (`tiny_cache/infrastructure/memory_store.py`).
+
+If additional backends are introduced later (for example, Redis), it helps to distinguish between:
+
+- Contract: behavior clients rely on across backends (gRPC/HTTP surfaces, input validation, status codes).
+- Backend semantics: eviction policy, memory accounting, and exact TTL enforcement strategy.
+
+The following are intended to remain stable across backends:
+
+- Key validation: non-empty string, max length 256.
+- TTL normalization: `ttl <= 0` means "no TTL".
+- `Get`: missing or expired keys return `found=false` (not an error).
+- `Delete`: idempotent success for missing keys.
+- `Set`: capacity/limit failures return `RESOURCE_EXHAUSTED`.
+- Request IDs: `x-request-id` is propagated into logs and error details.
+
+The following are backend-specific (the current in-memory backend behavior is described below):
+
+- Eviction policy (LRU vs other policies).
+- Memory accounting details and enforcement precision.
+- How/when expirations are applied (on-access, background cleanup, or backend-native TTL).
+
 ## Trust Boundary
 
 tiny-cache is designed to run as a sidecar or an internal service. It does not implement authentication or authorization.
@@ -59,6 +83,8 @@ Invalid values are rejected at startup with clear errors.
 `CacheEntry.size_bytes` uses `sys.getsizeof(value)` only. It does not include key size or container/object overhead, so limits are best-effort.
 
 ## Cache Behavior
+
+This section describes the current in-memory backend behavior (`tiny_cache/infrastructure/memory_store.py`).
 
 ### Get
 
