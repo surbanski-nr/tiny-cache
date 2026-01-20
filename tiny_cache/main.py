@@ -17,7 +17,7 @@ from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.tls import add_grpc_listen_port
 from tiny_cache.transport.active_requests import ActiveRequests
 from tiny_cache.transport.grpc.health import add_grpc_health_service
-from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor
+from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor, RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import create_health_app
 
@@ -37,7 +37,9 @@ async def serve(settings: Settings | None = None) -> None:
     active_requests = ActiveRequests()
 
     grpc_service = GrpcCacheService(cache_app)
-    grpc_server = grpc.aio.server(interceptors=[ActiveRequestsInterceptor(active_requests)])
+    grpc_server = grpc.aio.server(
+        interceptors=[RequestIdInterceptor(), ActiveRequestsInterceptor(active_requests)]
+    )
     cache_pb2_grpc.add_CacheServiceServicer_to_server(grpc_service, grpc_server)
     grpc_health_servicer = add_grpc_health_service(grpc_server)
 

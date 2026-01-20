@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 import uuid
+from contextvars import Token
 
 import grpc
 from grpc import StatusCode
@@ -20,6 +21,14 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
     def __init__(self, app: CacheApplicationService):
         self._app = app
 
+    def _ensure_request_id(self) -> tuple[str, Token[str] | None]:
+        request_id = request_id_var.get()
+        if request_id != "-":
+            return request_id, None
+
+        request_id = uuid.uuid4().hex
+        return request_id, request_id_var.set(request_id)
+
     def _get_client_address(self, context: grpc.aio.ServicerContext) -> str:
         try:
             peer = context.peer()
@@ -27,15 +36,6 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception:
             logger.debug("Unable to read client peer from context", exc_info=True)
             return "unknown"
-
-    def _get_request_id(self, context: grpc.aio.ServicerContext) -> str:
-        try:
-            for key, value in context.invocation_metadata():
-                if key.lower() == "x-request-id" and value:
-                    return value
-        except Exception:
-            logger.debug("Unable to read request id from metadata", exc_info=True)
-        return uuid.uuid4().hex
 
     def _log_request(
         self,
@@ -58,8 +58,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
     async def Get(self, request, context):
         start_time = time.monotonic()
-        request_id = self._get_request_id(context)
-        token = request_id_var.set(request_id)
+        request_id, token = self._ensure_request_id()
         client_addr = self._get_client_address(context)
 
         try:
@@ -93,12 +92,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheValue(found=False)
         finally:
-            request_id_var.reset(token)
+            if token is not None:
+                request_id_var.reset(token)
 
     async def Set(self, request, context):
         start_time = time.monotonic()
-        request_id = self._get_request_id(context)
-        token = request_id_var.set(request_id)
+        request_id, token = self._ensure_request_id()
         client_addr = self._get_client_address(context)
 
         try:
@@ -128,12 +127,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheResponse()
         finally:
-            request_id_var.reset(token)
+            if token is not None:
+                request_id_var.reset(token)
 
     async def Delete(self, request, context):
         start_time = time.monotonic()
-        request_id = self._get_request_id(context)
-        token = request_id_var.set(request_id)
+        request_id, token = self._ensure_request_id()
         client_addr = self._get_client_address(context)
 
         try:
@@ -156,12 +155,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheResponse()
         finally:
-            request_id_var.reset(token)
+            if token is not None:
+                request_id_var.reset(token)
 
     async def Stats(self, request, context):
         start_time = time.monotonic()
-        request_id = self._get_request_id(context)
-        token = request_id_var.set(request_id)
+        request_id, token = self._ensure_request_id()
         client_addr = self._get_client_address(context)
 
         try:
@@ -191,5 +190,5 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             context.set_details(f"Internal server error (request_id={request_id})")
             return cache_pb2.CacheStats()
         finally:
-            request_id_var.reset(token)
-
+            if token is not None:
+                request_id_var.reset(token)

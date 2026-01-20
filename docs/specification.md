@@ -150,6 +150,7 @@ The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cle
 - Request IDs:
   - Accepted from `x-request-id` request metadata when provided
   - Generated otherwise
+  - Returned to clients as `x-request-id` response metadata (initial metadata)
   - Included in logs and in `INTERNAL` error details (`request_id=...`)
 
 ### HTTP Health + Metrics API

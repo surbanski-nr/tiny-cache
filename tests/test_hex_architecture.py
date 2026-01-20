@@ -15,7 +15,7 @@ from tiny_cache.infrastructure.logging import JsonFormatter, RequestIdFilter, co
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.tls import add_grpc_listen_port, build_tls_server_credentials
 from tiny_cache.transport.active_requests import ActiveRequests
-from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor
+from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor, RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import HealthCheckHandler
 
@@ -192,6 +192,9 @@ class _FakeContext:
     def set_details(self, details):
         self.details = details
 
+    async def send_initial_metadata(self, metadata):
+        self.initial_metadata = tuple(metadata)
+
 
 @pytest.mark.asyncio
 async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
@@ -200,7 +203,6 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     service = GrpcCacheService(app)
 
     assert service._get_client_address(_FakeContext(raise_on_peer=True)) == "unknown"
-    assert service._get_request_id(_FakeContext(raise_on_metadata=True))
 
     with caplog.at_level(logging.DEBUG, logger="tiny_cache.transport.grpc.servicer"):
         service._log_request("GET", "k", "peer", 1.0, "HIT")
@@ -253,25 +255,63 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
 
     boom_service = GrpcCacheService(BoomApp())
 
-    ctx = _FakeContext(metadata=[("x-request-id", "rid-4")])
-    await boom_service.Set(cache_pb2.CacheItem(key="k", value=b"v", ttl=0), ctx)
-    assert ctx.code == grpc.StatusCode.INTERNAL
-    assert "request_id=rid-4" in (ctx.details or "")
+    token = request_id_var.set("rid-4")
+    try:
+        ctx = _FakeContext(metadata=[("x-request-id", "rid-4")])
+        await boom_service.Set(cache_pb2.CacheItem(key="k", value=b"v", ttl=0), ctx)
+        assert ctx.code == grpc.StatusCode.INTERNAL
+        assert "request_id=rid-4" in (ctx.details or "")
+    finally:
+        request_id_var.reset(token)
 
     ctx = _FakeContext(metadata=[("x-request-id", "rid-5")])
     await service.Delete(cache_pb2.CacheKey(key=""), ctx)
     assert ctx.code == grpc.StatusCode.INVALID_ARGUMENT
     assert ctx.details == "Key cannot be empty"
 
-    ctx = _FakeContext(metadata=[("x-request-id", "rid-6")])
-    await boom_service.Delete(cache_pb2.CacheKey(key="k"), ctx)
-    assert ctx.code == grpc.StatusCode.INTERNAL
-    assert "request_id=rid-6" in (ctx.details or "")
+    token = request_id_var.set("rid-6")
+    try:
+        ctx = _FakeContext(metadata=[("x-request-id", "rid-6")])
+        await boom_service.Delete(cache_pb2.CacheKey(key="k"), ctx)
+        assert ctx.code == grpc.StatusCode.INTERNAL
+        assert "request_id=rid-6" in (ctx.details or "")
+    finally:
+        request_id_var.reset(token)
 
-    ctx = _FakeContext(metadata=[("x-request-id", "rid-7")])
-    await boom_service.Stats(cache_pb2.Empty(), ctx)
-    assert ctx.code == grpc.StatusCode.INTERNAL
-    assert "request_id=rid-7" in (ctx.details or "")
+    token = request_id_var.set("rid-7")
+    try:
+        ctx = _FakeContext(metadata=[("x-request-id", "rid-7")])
+        await boom_service.Stats(cache_pb2.Empty(), ctx)
+        assert ctx.code == grpc.StatusCode.INTERNAL
+        assert "request_id=rid-7" in (ctx.details or "")
+    finally:
+        request_id_var.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_request_id_interceptor_sets_context_and_metadata():
+    interceptor = RequestIdInterceptor()
+
+    async def handler(_request, _context):
+        return request_id_var.get()
+
+    method_handler = grpc.unary_unary_rpc_method_handler(handler)
+
+    class Details:
+        method = "/cache.CacheService/Get"
+
+    async def continuation(_details):
+        return method_handler
+
+    wrapped = await interceptor.intercept_service(continuation, Details())
+    assert wrapped is not None
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-123")])
+    assert request_id_var.get() == "-"
+    response = await wrapped.unary_unary(None, ctx)
+    assert response == "rid-123"
+    assert ("x-request-id", "rid-123") in getattr(ctx, "initial_metadata", ())
+    assert request_id_var.get() == "-"
 
 
 @pytest.mark.asyncio
