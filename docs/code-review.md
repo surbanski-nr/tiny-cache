@@ -9,6 +9,6 @@ This file tracks high-value improvements for **readability** and **usability**. 
 - [x] Propagate `x-request-id` for **all** gRPC responses (success and error paths) to match HTTP behavior.
 - [x] Fix active request tracking to reflect **in-flight** gRPC calls (not just handler selection) and prevent negative counters.
 - [x] Add an HTTP `GET /stats` endpoint for quick, non-gRPC cache introspection.
-- [ ] Add a small CLI (`python -m tiny_cache.cli`) for `get/set/delete/stats` (supports binary-safe encodings and optional TLS).
-- [ ] Add/extend tests for the new behaviors (gRPC metadata, interceptor semantics, `/stats`, CLI).
+- [x] Add a small CLI (`python -m tiny_cache.cli`) for `get/set/delete/stats` (supports binary-safe encodings and optional TLS).
+- [x] Add/extend tests for the new behaviors (gRPC metadata, interceptor semantics, `/stats`, CLI).
 - [ ] Add a `make test` target that runs `make gen` then `pytest` for a single-command happy path.
