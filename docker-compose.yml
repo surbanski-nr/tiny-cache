@@ -5,10 +5,11 @@ services:
     container_name: cache-service
     restart: unless-stopped
     ports:
-      - "${CACHE_PORT:-50051}:${CACHE_PORT:-50051}"
-      - "${CACHE_HEALTH_PORT:-58080}:${CACHE_HEALTH_PORT:-58080}"
+      # Host-port overrides (container ports default to 50051/8080)
+      - "${CACHE_PORT_HOST:-50051}:${CACHE_PORT:-50051}"
+      - "${CACHE_HEALTH_PORT_HOST:-58080}:${CACHE_HEALTH_PORT:-8080}"
     environment:
       - CACHE_LOG_LEVEL=${CACHE_LOG_LEVEL:-INFO}
       - CACHE_PORT=${CACHE_PORT:-50051}
       - CACHE_HEALTH_HOST=${CACHE_HEALTH_HOST:-0.0.0.0}
-      - CACHE_HEALTH_PORT=${CACHE_HEALTH_PORT:-58080}
+      - CACHE_HEALTH_PORT=${CACHE_HEALTH_PORT:-8080}
