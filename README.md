@@ -71,6 +71,17 @@ The service implements the following gRPC methods:
 - `Delete(CacheKey) → CacheResponse`: Remove cached entry
 - `Stats(Empty) → CacheStats`: Get cache statistics
 
+## CLI (Optional)
+
+The repo includes a small CLI client for quick manual testing:
+
+```bash
+make gen
+python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
+python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
+python -m tiny_cache.cli --target 127.0.0.1:50051 stats
+```
+
 ## Testing
 
 ```bash
