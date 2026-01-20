@@ -31,6 +31,8 @@ def test_validate_key_rejects_non_string():
 def test_active_requests_counter_increments_and_decrements():
     counter = ActiveRequests()
     assert counter.value == 0
+    counter.decrement()
+    assert counter.value == 0
     counter.increment()
     assert counter.value == 1
     counter.decrement()
@@ -38,25 +40,37 @@ def test_active_requests_counter_increments_and_decrements():
 
 
 @pytest.mark.asyncio
-async def test_active_requests_interceptor_balances_counter():
+async def test_active_requests_interceptor_tracks_inflight_call():
+    import asyncio
+
     counter = ActiveRequests()
     interceptor = ActiveRequestsInterceptor(counter)
 
     class Details:
         method = "/cache.CacheService/Get"
 
-    async def continuation(_details):
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def handler(_request, _context):
+        started.set()
+        await finish.wait()
         return "ok"
 
-    result = await interceptor.intercept_service(continuation, Details())
-    assert result == "ok"
+    method_handler = grpc.unary_unary_rpc_method_handler(handler)
+
+    async def continuation(_details):
+        return method_handler
+
+    wrapped = await interceptor.intercept_service(continuation, Details())
+    assert wrapped is not None
     assert counter.value == 0
 
-    async def continuation_raises(_details):
-        raise RuntimeError("boom")
-
-    with pytest.raises(RuntimeError, match="boom"):
-        await interceptor.intercept_service(continuation_raises, Details())
+    task = asyncio.create_task(wrapped.unary_unary(None, object()))
+    await started.wait()
+    assert counter.value == 1
+    finish.set()
+    assert await task == "ok"
     assert counter.value == 0
 
 
