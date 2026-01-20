@@ -32,8 +32,12 @@ python -m tiny_cache
 ### Docker
 
 ```bash
-docker-compose build
-docker-compose up
+docker-compose up -d --build
+
+# Default ports:
+# - gRPC: 127.0.0.1:50051
+# - HTTP health/metrics: 127.0.0.1:58080 (container listens on 8080)
+curl -fsS "http://127.0.0.1:${CACHE_HEALTH_PORT_HOST:-58080}/health"
 ```
 
 ## Configuration
