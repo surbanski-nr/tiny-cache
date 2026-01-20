@@ -11,4 +11,4 @@ This file tracks high-value improvements for **readability** and **usability**. 
 - [x] Add an HTTP `GET /stats` endpoint for quick, non-gRPC cache introspection.
 - [x] Add a small CLI (`python -m tiny_cache.cli`) for `get/set/delete/stats` (supports binary-safe encodings and optional TLS).
 - [x] Add/extend tests for the new behaviors (gRPC metadata, interceptor semantics, `/stats`, CLI).
-- [ ] Add a `make test` target that runs `make gen` then `pytest` for a single-command happy path.
+- [x] Add a `make test` target that runs `make gen` then `pytest` for a single-command happy path.

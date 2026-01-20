@@ -7,4 +7,7 @@ gen:
 clean:
 	rm -f cache_pb2.py cache_pb2_grpc.py
 
-.PHONY: gen clean
+test: gen
+	$(PYTHON) -m pytest
+
+.PHONY: gen clean test
