@@ -8,6 +8,7 @@ import cache_pb2_grpc
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.tls import build_tls_server_credentials
+from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
 
@@ -22,7 +23,7 @@ async def test_grpc_tls_set_get_roundtrip():
     cache_app = CacheApplicationService(cache_store)
     service = GrpcCacheService(cache_app)
 
-    server = grpc.aio.server()
+    server = grpc.aio.server(interceptors=[RequestIdInterceptor()])
     cache_pb2_grpc.add_CacheServiceServicer_to_server(service, server)
 
     server_credentials = build_tls_server_credentials(str(cert_path), str(key_path))

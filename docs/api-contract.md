@@ -79,7 +79,7 @@ The gRPC/HTTP APIs are the stable client contract. Cache eviction strategy and l
 
 ### Request IDs
 
-Clients may send an `x-request-id` metadata header. The server propagates it into logs and includes it in `INTERNAL` error details.
+Clients may send an `x-request-id` metadata header. The server propagates it into logs, returns it in response metadata, and includes it in `INTERNAL` error details.
 
 ### TLS (Optional)
 

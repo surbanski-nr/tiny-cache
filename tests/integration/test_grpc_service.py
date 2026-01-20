@@ -9,6 +9,7 @@ import cache_pb2
 import cache_pb2_grpc
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
 
@@ -36,7 +37,7 @@ async def grpc_server():
     async def _start(cache_store: CacheStore):
         cache_app = CacheApplicationService(cache_store)
         service = GrpcCacheService(cache_app)
-        server = grpc.aio.server()
+        server = grpc.aio.server(interceptors=[RequestIdInterceptor()])
         cache_pb2_grpc.add_CacheServiceServicer_to_server(service, server)
 
         port = server.add_insecure_port("127.0.0.1:0")
@@ -194,3 +195,19 @@ async def test_internal_error_includes_request_id(grpc_server):
 
     assert exc_info.value.code() == grpc.StatusCode.INTERNAL
     assert "request_id=rid-123" in exc_info.value.details()
+
+
+async def test_response_metadata_includes_request_id(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    stub, _service = await grpc_server(cache_store)
+
+    call = stub.Get(
+        cache_pb2.CacheKey(key="missing"),
+        metadata=(("x-request-id", "rid-123"),),
+    )
+    value = await call
+    assert value.found is False
+
+    metadata = await call.initial_metadata()
+    assert ("x-request-id", "rid-123") in tuple(metadata)
