@@ -22,8 +22,10 @@ python3 -m venv venv
 . ./venv/bin/activate
 pip install -r requirements.txt
 
+# Install task runner (Taskfile): https://taskfile.dev
+
 # Generate protobuf files
-make gen
+task gen
 
 # Start server
 python -m tiny_cache
@@ -76,7 +78,7 @@ The service implements the following gRPC methods:
 The repo includes a small CLI client for quick manual testing:
 
 ```bash
-make gen
+task gen
 python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
 python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
 python -m tiny_cache.cli --target 127.0.0.1:50051 stats

@@ -5,11 +5,11 @@ This document is a quick orientation guide to the repository. For behavior detai
 ## What This Repo Contains
 
 - A gRPC cache service (transport adapter under `tiny_cache/transport/grpc/`) backed by an in-memory store (`tiny_cache/infrastructure/memory_store.py`)
-- Protobuf schema (`cache.proto`) and generated Python stubs (generated via `make gen`)
+- Protobuf schema (`cache.proto`) and generated Python stubs (generated via `task gen`)
 - Unit + integration tests (`tests/`)
 - Container and deployment manifests (Docker, docker-compose, Kubernetes example)
 
-Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally not tracked and are produced via `make gen`.
+Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally not tracked and are produced via `task gen`.
 
 ## How Requests Flow
 
@@ -38,7 +38,7 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 
 ## Development Entry Points
 
-- Generate protobuf stubs: `make gen`
+- Generate protobuf stubs: `task gen`
 - Run locally: `python -m tiny_cache`
 - Run tests:
   - Unit: `pytest -m unit`

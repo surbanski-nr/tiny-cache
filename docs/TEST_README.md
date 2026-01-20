@@ -5,14 +5,16 @@
 ```bash
 . ./venv/bin/activate
 pip install -r requirements-dev.txt
-make gen
+#
+# Install task runner (Taskfile): https://taskfile.dev
+task gen
 ```
 
 ## Run Tests
 
 ```bash
 # One-command happy path
-make test
+task test
 
 # Unit tests
 pytest -m unit

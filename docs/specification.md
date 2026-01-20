@@ -170,5 +170,5 @@ All responses include an `x-request-id` header (propagated from requests when pr
 The generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are not tracked and must be generated via:
 
 ```bash
-make gen
+task gen
 ```
