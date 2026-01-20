@@ -14,10 +14,9 @@ class ActiveRequests:
 
     def decrement(self) -> None:
         with self._lock:
-            self._value -= 1
+            self._value = max(self._value - 1, 0)
 
     @property
     def value(self) -> int:
         with self._lock:
             return self._value
-

@@ -139,11 +139,96 @@ class ActiveRequestsInterceptor(grpc.aio.ServerInterceptor):
         self._active_requests = active_requests
 
     async def intercept_service(self, continuation, handler_call_details):
+        handler = await continuation(handler_call_details)
+        if handler is None:
+            return None
+
         rpc_method = getattr(handler_call_details, "method", "unknown")
-        self._active_requests.increment()
-        logger.debug("RPC started %s (active=%s)", rpc_method, self._active_requests.value)
-        try:
-            return await continuation(handler_call_details)
-        finally:
-            self._active_requests.decrement()
-            logger.debug("RPC finished %s (active=%s)", rpc_method, self._active_requests.value)
+
+        async def _run_with_active_request(action: Callable[[], Awaitable[_T]]) -> _T:
+            self._active_requests.increment()
+            logger.debug("RPC started %s (active=%s)", rpc_method, self._active_requests.value)
+            try:
+                return await action()
+            finally:
+                self._active_requests.decrement()
+                logger.debug("RPC finished %s (active=%s)", rpc_method, self._active_requests.value)
+
+        def _wrap_unary_unary(
+            behavior: Callable[[Any, grpc.aio.ServicerContext], Awaitable[_T]],
+        ) -> Callable[[Any, grpc.aio.ServicerContext], Awaitable[_T]]:
+            async def _wrapped(request: Any, context: grpc.aio.ServicerContext) -> _T:
+                return await _run_with_active_request(lambda: behavior(request, context))
+
+            return _wrapped
+
+        def _wrap_unary_stream(
+            behavior: Callable[[Any, grpc.aio.ServicerContext], AsyncIterator[_T]],
+        ) -> Callable[[Any, grpc.aio.ServicerContext], AsyncIterator[_T]]:
+            async def _wrapped(request: Any, context: grpc.aio.ServicerContext) -> AsyncIterator[_T]:
+                self._active_requests.increment()
+                logger.debug("RPC started %s (active=%s)", rpc_method, self._active_requests.value)
+                try:
+                    async for item in behavior(request, context):
+                        yield item
+                finally:
+                    self._active_requests.decrement()
+                    logger.debug("RPC finished %s (active=%s)", rpc_method, self._active_requests.value)
+
+            return _wrapped
+
+        def _wrap_stream_unary(
+            behavior: Callable[[AsyncIterator[Any], grpc.aio.ServicerContext], Awaitable[_T]],
+        ) -> Callable[[AsyncIterator[Any], grpc.aio.ServicerContext], Awaitable[_T]]:
+            async def _wrapped(request_iterator: AsyncIterator[Any], context: grpc.aio.ServicerContext) -> _T:
+                return await _run_with_active_request(lambda: behavior(request_iterator, context))
+
+            return _wrapped
+
+        def _wrap_stream_stream(
+            behavior: Callable[[AsyncIterator[Any], grpc.aio.ServicerContext], AsyncIterator[_T]],
+        ) -> Callable[[AsyncIterator[Any], grpc.aio.ServicerContext], AsyncIterator[_T]]:
+            async def _wrapped(
+                request_iterator: AsyncIterator[Any],
+                context: grpc.aio.ServicerContext,
+            ) -> AsyncIterator[_T]:
+                self._active_requests.increment()
+                logger.debug("RPC started %s (active=%s)", rpc_method, self._active_requests.value)
+                try:
+                    async for item in behavior(request_iterator, context):
+                        yield item
+                finally:
+                    self._active_requests.decrement()
+                    logger.debug("RPC finished %s (active=%s)", rpc_method, self._active_requests.value)
+
+            return _wrapped
+
+        if handler.unary_unary:
+            return grpc.unary_unary_rpc_method_handler(
+                _wrap_unary_unary(handler.unary_unary),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.unary_stream:
+            return grpc.unary_stream_rpc_method_handler(
+                _wrap_unary_stream(handler.unary_stream),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_unary:
+            return grpc.stream_unary_rpc_method_handler(
+                _wrap_stream_unary(handler.stream_unary),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_stream:
+            return grpc.stream_stream_rpc_method_handler(
+                _wrap_stream_stream(handler.stream_stream),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        return handler
