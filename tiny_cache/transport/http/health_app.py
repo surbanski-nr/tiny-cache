@@ -113,6 +113,27 @@ class HealthCheckHandler:
             logger.exception("Metrics error")
             return web.Response(text="", status=503, content_type="text/plain; version=0.0.4")
 
+    async def stats(self, request: web.Request) -> web.Response:
+        try:
+            stats = await asyncio.to_thread(self._app.stats)
+            uptime = time.monotonic() - self._start_time
+            payload = dict(stats)
+            payload.update(
+                {
+                    "uptime_seconds": round(uptime, 2),
+                    "active_requests": self._active_requests.value,
+                    "timestamp": time.time(),
+                }
+            )
+            return web.Response(text=json.dumps(payload), status=200, content_type="application/json")
+        except Exception as exc:
+            logger.exception("Stats error")
+            return web.Response(
+                text=json.dumps({"status": "error", "message": str(exc)}),
+                status=503,
+                content_type="application/json",
+            )
+
 
 async def create_health_app(
     cache_app: CacheApplicationService,
@@ -127,13 +148,14 @@ async def create_health_app(
     app.router.add_get("/ready", handler.readiness_check)
     app.router.add_get("/live", handler.liveness_check)
     app.router.add_get("/metrics", handler.metrics)
+    app.router.add_get("/stats", handler.stats)
 
     async def root_handler(request: web.Request) -> web.Response:
         return web.Response(
             text=json.dumps(
                 {
                     "service": "tiny-cache",
-                    "endpoints": ["/health", "/ready", "/live", "/metrics"],
+                    "endpoints": ["/health", "/ready", "/live", "/metrics", "/stats"],
                     "grpc_port": grpc_port,
                 }
             ),

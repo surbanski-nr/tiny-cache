@@ -115,6 +115,9 @@ Endpoints:
   - `200` JSON when process is alive
 - `GET /metrics`
   - `200` Prometheus text-format metrics
+- `GET /stats`
+  - `200` JSON with cache statistics
+  - `503` JSON on error
 - `GET /`
   - `200` JSON with service metadata and endpoint list
 

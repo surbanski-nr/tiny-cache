@@ -80,6 +80,15 @@ async def test_health_endpoints_ok():
                 assert "tiny_cache_evictions_total 0" in metrics
                 assert "tiny_cache_entries 0" in metrics
 
+            async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
+                assert resp.status == 200
+                assert resp.headers.get("Content-Type", "").startswith("application/json")
+                payload = await resp.json()
+                assert payload["size"] == 0
+                assert payload["hits"] == 0
+                assert payload["misses"] == 0
+                assert payload["active_requests"] == 0
+
             async with session.get(f"http://127.0.0.1:{port}/") as resp:
                 assert resp.status == 200
                 payload = await resp.json()
@@ -87,6 +96,7 @@ async def test_health_endpoints_ok():
                 assert "/health" in payload["endpoints"]
                 assert "/ready" in payload["endpoints"]
                 assert "/live" in payload["endpoints"]
+                assert "/stats" in payload["endpoints"]
                 assert isinstance(payload["grpc_port"], int)
     finally:
         await runner.cleanup()
@@ -113,6 +123,9 @@ async def test_health_endpoints_error_on_stats_exception():
                 assert payload["status"] == "error"
 
             async with session.get(f"http://127.0.0.1:{port}/metrics") as resp:
+                assert resp.status == 503
+
+            async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
                 assert resp.status == 503
     finally:
         await runner.cleanup()
