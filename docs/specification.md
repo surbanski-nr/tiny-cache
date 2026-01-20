@@ -160,6 +160,7 @@ An `aiohttp` server is exposed on `CACHE_HEALTH_HOST:CACHE_HEALTH_PORT`:
 - `GET /health`, `GET /ready`: readiness/health JSON
 - `GET /live`: liveness JSON
 - `GET /metrics`: Prometheus text-format metrics
+- `GET /stats`: cache statistics JSON
 - `GET /`: basic service metadata JSON
 
 All responses include an `x-request-id` header (propagated from requests when present).
