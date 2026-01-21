@@ -39,11 +39,16 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 ## Development Entry Points
 
 - Generate protobuf stubs: `task gen`
-- Run locally: `python -m tiny_cache`
+- Run locally: `uv run python -m tiny_cache`
 - Run tests:
-  - Unit: `pytest -m unit`
-  - Integration: `pytest -m integration`
-  - Coverage: `pytest --cov=tiny_cache --cov-report=term-missing`
+  - Unit: `uv run pytest -m unit`
+  - Integration: `uv run pytest -m integration`
+  - Coverage: `uv run pytest --cov=tiny_cache --cov-report=term-missing`
+
+- Code quality:
+  - Lint: `task lint`
+  - Format: `task format`
+  - Typecheck: `task typecheck`
 
 ## Related Documents
 

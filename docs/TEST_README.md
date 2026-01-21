@@ -3,8 +3,8 @@
 ## Prerequisites
 
 ```bash
-. ./venv/bin/activate
-pip install -r requirements-dev.txt
+# Install uv: https://docs.astral.sh/uv/
+uv sync
 #
 # Install task runner (Taskfile): https://taskfile.dev
 task gen

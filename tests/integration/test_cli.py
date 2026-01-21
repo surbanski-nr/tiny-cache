@@ -11,7 +11,6 @@ from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
-
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -51,16 +50,18 @@ async def test_cli_set_get_delete_stats_roundtrip(grpc_target, capsys):
 
 
 async def test_cli_show_request_id_prints_response_request_id(grpc_target, capsys):
-    assert await run(
-        [
-            "--target",
-            grpc_target,
-            "--request-id",
-            "rid-123",
-            "--show-request-id",
-            "stats",
-        ]
-    ) == 0
+    assert (
+        await run(
+            [
+                "--target",
+                grpc_target,
+                "--request-id",
+                "rid-123",
+                "--show-request-id",
+                "stats",
+            ]
+        )
+        == 0
+    )
     stderr = capsys.readouterr().err
     assert "x-request-id=rid-123" in stderr
-

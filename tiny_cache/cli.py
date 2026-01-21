@@ -70,11 +70,15 @@ def _build_parser() -> argparse.ArgumentParser:
     set_parser = subparsers.add_parser("set", help="set a value")
     set_parser.add_argument("key")
     set_parser.add_argument("value", nargs="?", help="value as UTF-8 text")
-    set_parser.add_argument("--ttl", type=int, default=0, help="ttl seconds (<= 0 means no ttl)")
+    set_parser.add_argument(
+        "--ttl", type=int, default=0, help="ttl seconds (<= 0 means no ttl)"
+    )
     set_group = set_parser.add_mutually_exclusive_group(required=False)
     set_group.add_argument("--value-base64", default=None, help="value as base64")
     set_group.add_argument("--value-hex", default=None, help="value as hex")
-    set_group.add_argument("--value-file", default=None, help="read raw bytes from a file")
+    set_group.add_argument(
+        "--value-file", default=None, help="read raw bytes from a file"
+    )
 
     delete_parser = subparsers.add_parser("delete", help="delete a key")
     delete_parser.add_argument("key")
@@ -103,13 +107,19 @@ def _parse_set_value(args: argparse.Namespace) -> bytes:
         return bytes.fromhex(args.value_hex)
     if args.value is not None:
         return args.value.encode("utf-8")
-    raise ValueError("set requires a value (positional, --value-file, --value-base64, or --value-hex)")
+    raise ValueError(
+        "set requires a value (positional, --value-file, --value-base64, or --value-hex)"
+    )
 
 
-def _validate_set_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+def _validate_set_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
     if args.command != "set":
         return
-    if args.value is not None and any([args.value_file, args.value_base64, args.value_hex]):
+    if args.value is not None and any(
+        [args.value_file, args.value_base64, args.value_hex]
+    ):
         parser.error("set: positional value cannot be combined with --value-*")
 
 
@@ -154,7 +164,9 @@ async def run(argv: Sequence[str] | None = None) -> int:
                 timeout=args.timeout,
             )
             response = await call
-            response_request_id = _get_response_request_id(await call.initial_metadata())
+            response_request_id = _get_response_request_id(
+                await call.initial_metadata()
+            )
             if args.show_request_id and response_request_id:
                 print(f"{REQUEST_ID_HEADER}={response_request_id}", file=sys.stderr)
 
@@ -176,7 +188,9 @@ async def run(argv: Sequence[str] | None = None) -> int:
                 timeout=args.timeout,
             )
             response = await call
-            response_request_id = _get_response_request_id(await call.initial_metadata())
+            response_request_id = _get_response_request_id(
+                await call.initial_metadata()
+            )
             if args.show_request_id and response_request_id:
                 print(f"{REQUEST_ID_HEADER}={response_request_id}", file=sys.stderr)
 
@@ -194,7 +208,9 @@ async def run(argv: Sequence[str] | None = None) -> int:
                 timeout=args.timeout,
             )
             response = await call
-            response_request_id = _get_response_request_id(await call.initial_metadata())
+            response_request_id = _get_response_request_id(
+                await call.initial_metadata()
+            )
             if args.show_request_id and response_request_id:
                 print(f"{REQUEST_ID_HEADER}={response_request_id}", file=sys.stderr)
 
@@ -212,7 +228,9 @@ async def run(argv: Sequence[str] | None = None) -> int:
                 timeout=args.timeout,
             )
             response = await call
-            response_request_id = _get_response_request_id(await call.initial_metadata())
+            response_request_id = _get_response_request_id(
+                await call.initial_metadata()
+            )
             if args.show_request_id and response_request_id:
                 print(f"{REQUEST_ID_HEADER}={response_request_id}", file=sys.stderr)
 
@@ -247,4 +265,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

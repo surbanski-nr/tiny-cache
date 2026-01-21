@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tiny-cache"
+version = "0.1.0"
+description = "A lightweight gRPC cache service designed to work as a sidecar."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+  "aiohttp>=3.8,<4",
+  "grpcio>=1.76.0,<2",
+  "grpcio-health-checking>=1.76.0,<2",
+  "protobuf>=6.31.1,<7",
+  "pydantic>=2.7.0,<3",
+]
+
+[project.scripts]
+tiny-cache = "tiny_cache.main:main"
+tiny-cache-cli = "tiny_cache.cli:main"
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.22.0,<2",
+  "grpcio-tools>=1.76.0,<2",
+  "pytest==7.4.3",
+  "pytest-asyncio==0.21.1",
+  "pytest-cov==4.1.0",
+  "pytest-mock==3.12.0",
+  "ruff>=0.8.0,<1",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = [
+  "cache_pb2.py",
+  "cache_pb2_grpc.py",
+  "*_pb2.py",
+  "*_pb2_grpc.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

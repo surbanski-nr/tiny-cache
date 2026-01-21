@@ -196,6 +196,9 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# Taskfile
+.task/
+
 # PyPI configuration file
 .pypirc
 

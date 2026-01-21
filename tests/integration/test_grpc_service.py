@@ -12,7 +12,6 @@ from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
-
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -60,7 +59,9 @@ async def grpc_server():
 
 async def test_set_get_roundtrip_utf8_bytes(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Set(cache_pb2.CacheItem(key="k1", value=b"hello", ttl=0))
@@ -73,7 +74,9 @@ async def test_set_get_roundtrip_utf8_bytes(grpc_server):
 
 async def test_set_get_roundtrip_binary_bytes(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     payload = b"\xff\x00\xfe"
@@ -87,7 +90,9 @@ async def test_set_get_roundtrip_binary_bytes(grpc_server):
 
 async def test_get_missing_returns_found_false(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     value = await stub.Get(cache_pb2.CacheKey(key="missing"))
@@ -97,7 +102,9 @@ async def test_get_missing_returns_found_false(grpc_server):
 
 async def test_delete_missing_is_idempotent_ok(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Delete(cache_pb2.CacheKey(key="missing"))
@@ -106,7 +113,9 @@ async def test_delete_missing_is_idempotent_ok(grpc_server):
 
 async def test_invalid_key_returns_invalid_argument(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     with pytest.raises(grpc.aio.AioRpcError) as exc_info:
@@ -118,7 +127,9 @@ async def test_invalid_key_returns_invalid_argument(grpc_server):
 
 async def test_ttl_expiration(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     response = await stub.Set(cache_pb2.CacheItem(key="ttl", value=b"value", ttl=1))
@@ -147,12 +158,14 @@ async def test_set_too_large_value_returns_resource_exhausted(grpc_server):
         await stub.Set(cache_pb2.CacheItem(key="big", value=b"x" * 1024, ttl=0))
 
     assert exc_info.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
-    assert "Cache is full" in exc_info.value.details()
+    assert "Cache is full" in (exc_info.value.details() or "")
 
 
 async def test_stats_reports_size_hits_misses(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     stats = await stub.Stats(cache_pb2.Empty())
@@ -183,7 +196,9 @@ async def test_stats_reports_size_hits_misses(grpc_server):
 
 async def test_internal_error_includes_request_id(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     with patch.object(cache_store, "get", side_effect=RuntimeError("boom")):
@@ -194,12 +209,14 @@ async def test_internal_error_includes_request_id(grpc_server):
             )
 
     assert exc_info.value.code() == grpc.StatusCode.INTERNAL
-    assert "request_id=rid-123" in exc_info.value.details()
+    assert "request_id=rid-123" in (exc_info.value.details() or "")
 
 
 async def test_response_metadata_includes_request_id(grpc_server):
     clock = ThreadSafeClock()
-    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock)
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
     stub, _service = await grpc_server(cache_store)
 
     call = stub.Get(

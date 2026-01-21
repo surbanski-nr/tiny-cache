@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 import grpc
 
@@ -19,7 +20,9 @@ def build_tls_server_credentials(
 
     if require_client_auth:
         if client_ca_path is None:
-            raise ValueError("CACHE_TLS_CLIENT_CA_PATH must be set when client auth is required")
+            raise ValueError(
+                "CACHE_TLS_CLIENT_CA_PATH must be set when client auth is required"
+            )
         root_certificates = Path(client_ca_path).read_bytes()
         return grpc.ssl_server_credentials(
             [(private_key, certificate_chain)],
@@ -30,10 +33,14 @@ def build_tls_server_credentials(
     return grpc.ssl_server_credentials([(private_key, certificate_chain)])
 
 
-def add_grpc_listen_port(server: grpc.aio.Server, listen_addr: str, settings: Settings) -> int:
+def add_grpc_listen_port(
+    server: "GrpcListenServer", listen_addr: str, settings: Settings
+) -> int:
     if settings.tls_enabled:
         if not settings.tls_cert_path or not settings.tls_key_path:
-            raise ValueError("CACHE_TLS_CERT_PATH and CACHE_TLS_KEY_PATH must be set when TLS is enabled")
+            raise ValueError(
+                "CACHE_TLS_CERT_PATH and CACHE_TLS_KEY_PATH must be set when TLS is enabled"
+            )
         credentials = build_tls_server_credentials(
             settings.tls_cert_path,
             settings.tls_key_path,
@@ -44,3 +51,10 @@ def add_grpc_listen_port(server: grpc.aio.Server, listen_addr: str, settings: Se
 
     return server.add_insecure_port(listen_addr)
 
+
+class GrpcListenServer(Protocol):
+    def add_insecure_port(self, addr: str, /) -> int: ...
+
+    def add_secure_port(
+        self, addr: str, credentials: grpc.ServerCredentials, /
+    ) -> int: ...

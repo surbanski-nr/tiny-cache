@@ -5,11 +5,11 @@ import logging
 import os
 import signal
 
-from aiohttp import web
 import grpc
-import cache_pb2_grpc
+from aiohttp import web
 from grpc_health.v1 import health_pb2
 
+import cache_pb2_grpc
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.config import Settings, load_settings
 from tiny_cache.infrastructure.logging import configure_logging
@@ -17,7 +17,10 @@ from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.tls import add_grpc_listen_port
 from tiny_cache.transport.active_requests import ActiveRequests
 from tiny_cache.transport.grpc.health import add_grpc_health_service
-from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor, RequestIdInterceptor
+from tiny_cache.transport.grpc.interceptors import (
+    ActiveRequestsInterceptor,
+    RequestIdInterceptor,
+)
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import create_health_app
 
@@ -38,7 +41,10 @@ async def serve(settings: Settings | None = None) -> None:
 
     grpc_service = GrpcCacheService(cache_app)
     grpc_server = grpc.aio.server(
-        interceptors=[RequestIdInterceptor(), ActiveRequestsInterceptor(active_requests)]
+        interceptors=[
+            RequestIdInterceptor(),
+            ActiveRequestsInterceptor(active_requests),
+        ]
     )
     cache_pb2_grpc.add_CacheServiceServicer_to_server(grpc_service, grpc_server)
     grpc_health_servicer = add_grpc_health_service(grpc_server)
@@ -51,7 +57,9 @@ async def serve(settings: Settings | None = None) -> None:
 
     await grpc_server.start()
 
-    health_app = await create_health_app(cache_app, active_requests, grpc_port=settings.port)
+    health_app = await create_health_app(
+        cache_app, active_requests, grpc_port=settings.port
+    )
 
     if settings.log_level == "DEBUG":
         access_log = logger
@@ -63,12 +71,18 @@ async def serve(settings: Settings | None = None) -> None:
     await health_runner.setup()
     health_site = web.TCPSite(health_runner, settings.health_host, settings.health_port)
     await health_site.start()
-    logger.info("Health check server started on %s:%s", settings.health_host, settings.health_port)
+    logger.info(
+        "Health check server started on %s:%s",
+        settings.health_host,
+        settings.health_port,
+    )
 
     def _begin_shutdown() -> None:
         logger.info("Received shutdown signal, stopping cache service...")
         grpc_health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-        grpc_health_servicer.set("cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING)
+        grpc_health_servicer.set(
+            "cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING
+        )
         cache_store.stop()
         asyncio.create_task(grpc_server.stop(grace=5))
         asyncio.create_task(health_runner.cleanup())

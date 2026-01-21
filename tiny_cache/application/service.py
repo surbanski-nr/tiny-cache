@@ -27,4 +27,3 @@ class CacheApplicationService:
 
     def stats(self) -> dict[str, Any]:
         return self.store.stats()
-

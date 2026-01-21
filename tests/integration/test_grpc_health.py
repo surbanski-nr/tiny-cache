@@ -5,7 +5,6 @@ from grpc_health.v1 import health_pb2, health_pb2_grpc
 
 from tiny_cache.transport.grpc.health import add_grpc_health_service
 
-
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -32,7 +31,9 @@ async def test_grpc_health_check_serving(health_stub):
     response = await health_stub.Check(health_pb2.HealthCheckRequest(service=""))
     assert response.status == health_pb2.HealthCheckResponse.SERVING
 
-    response = await health_stub.Check(health_pb2.HealthCheckRequest(service="cache.CacheService"))
+    response = await health_stub.Check(
+        health_pb2.HealthCheckRequest(service="cache.CacheService")
+    )
     assert response.status == health_pb2.HealthCheckResponse.SERVING
 
 
