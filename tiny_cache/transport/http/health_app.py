@@ -5,10 +5,11 @@ import json
 import logging
 import time
 import uuid
+from typing import Any, Protocol
+
 from aiohttp import web
 
 from tiny_cache.application.request_context import request_id_var
-from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.transport.active_requests import ActiveRequests
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ async def request_id_middleware(request: web.Request, handler):
 
 
 class HealthCheckHandler:
-    def __init__(self, app: CacheApplicationService, active_requests: ActiveRequests):
+    def __init__(self, app: "CacheStatsProvider", active_requests: ActiveRequests):
         self._app = app
         self._active_requests = active_requests
         self._start_time = time.monotonic()
@@ -46,7 +47,11 @@ class HealthCheckHandler:
                 "active_requests": self._active_requests.value,
                 "timestamp": time.time(),
             }
-            return web.Response(text=json.dumps(response_data), status=200, content_type="application/json")
+            return web.Response(
+                text=json.dumps(response_data),
+                status=200,
+                content_type="application/json",
+            )
         except Exception as exc:
             logger.exception("Health check error")
             return web.Response(
@@ -66,7 +71,11 @@ class HealthCheckHandler:
                 "uptime_seconds": round(uptime, 2),
                 "timestamp": time.time(),
             }
-            return web.Response(text=json.dumps(response_data), status=200, content_type="application/json")
+            return web.Response(
+                text=json.dumps(response_data),
+                status=200,
+                content_type="application/json",
+            )
         except Exception as exc:
             logger.exception("Liveness check error")
             return web.Response(
@@ -111,7 +120,9 @@ class HealthCheckHandler:
             )
         except Exception:
             logger.exception("Metrics error")
-            return web.Response(text="", status=503, content_type="text/plain; version=0.0.4")
+            return web.Response(
+                text="", status=503, content_type="text/plain; version=0.0.4"
+            )
 
     async def stats(self, request: web.Request) -> web.Response:
         try:
@@ -125,7 +136,9 @@ class HealthCheckHandler:
                     "timestamp": time.time(),
                 }
             )
-            return web.Response(text=json.dumps(payload), status=200, content_type="application/json")
+            return web.Response(
+                text=json.dumps(payload), status=200, content_type="application/json"
+            )
         except Exception as exc:
             logger.exception("Stats error")
             return web.Response(
@@ -136,7 +149,7 @@ class HealthCheckHandler:
 
 
 async def create_health_app(
-    cache_app: CacheApplicationService,
+    cache_app: "CacheStatsProvider",
     active_requests: ActiveRequests,
     *,
     grpc_port: int,
@@ -164,3 +177,7 @@ async def create_health_app(
 
     app.router.add_get("/", root_handler)
     return app
+
+
+class CacheStatsProvider(Protocol):
+    def stats(self) -> dict[str, Any]: ...

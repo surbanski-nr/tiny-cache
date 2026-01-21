@@ -5,20 +5,32 @@ import logging
 import time
 import uuid
 from contextvars import Token
+from typing import Any, Protocol
 
-import grpc
 from grpc import StatusCode
 
 import cache_pb2
 import cache_pb2_grpc
 from tiny_cache.application.request_context import request_id_var
-from tiny_cache.application.service import CacheApplicationService
 
 logger = logging.getLogger(__name__)
 
 
+class CacheApp(Protocol):
+    @property
+    def store(self) -> Any: ...
+
+    def get(self, key: str, /) -> Any | None: ...
+
+    def set(self, key: str, value: Any, ttl_seconds: int, /) -> bool: ...
+
+    def delete(self, key: str, /) -> bool: ...
+
+    def stats(self) -> dict[str, Any]: ...
+
+
 class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
-    def __init__(self, app: CacheApplicationService):
+    def __init__(self, app: CacheApp):
         self._app = app
 
     def _ensure_request_id(self) -> tuple[str, Token[str] | None]:
@@ -29,7 +41,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         request_id = uuid.uuid4().hex
         return request_id, request_id_var.set(request_id)
 
-    def _get_client_address(self, context: grpc.aio.ServicerContext) -> str:
+    def _get_client_address(self, context: Any) -> str:
         try:
             peer = context.peer()
             return peer if peer else "unknown"
@@ -80,7 +92,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheValue(found=True, value=encoded_value)
         except ValueError as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("GET", request.key, client_addr, duration_ms, "INVALID_KEY")
+            self._log_request(
+                "GET", request.key, client_addr, duration_ms, "INVALID_KEY"
+            )
             context.set_code(StatusCode.INVALID_ARGUMENT)
             context.set_details(str(exc))
             return cache_pb2.CacheValue(found=False)
@@ -101,12 +115,16 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         client_addr = self._get_client_address(context)
 
         try:
-            success = await asyncio.to_thread(self._app.set, request.key, request.value, request.ttl)
+            success = await asyncio.to_thread(
+                self._app.set, request.key, request.value, request.ttl
+            )
             duration_ms = (time.monotonic() - start_time) * 1000
 
             if success:
                 ttl_info = f" ttl={request.ttl}s" if request.ttl > 0 else ""
-                self._log_request("SET", request.key, client_addr, duration_ms, f"OK{ttl_info}")
+                self._log_request(
+                    "SET", request.key, client_addr, duration_ms, f"OK{ttl_info}"
+                )
                 return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
 
             self._log_request("SET", request.key, client_addr, duration_ms, "FULL")
@@ -115,7 +133,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             return cache_pb2.CacheResponse()
         except ValueError as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("SET", request.key, client_addr, duration_ms, "INVALID_KEY")
+            self._log_request(
+                "SET", request.key, client_addr, duration_ms, "INVALID_KEY"
+            )
             context.set_code(StatusCode.INVALID_ARGUMENT)
             context.set_details(str(exc))
             return cache_pb2.CacheResponse()
@@ -139,11 +159,15 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             deleted = await asyncio.to_thread(self._app.delete, request.key)
             duration_ms = (time.monotonic() - start_time) * 1000
             log_result = "OK" if deleted else "OK_MISSING"
-            self._log_request("DELETE", request.key, client_addr, duration_ms, log_result)
+            self._log_request(
+                "DELETE", request.key, client_addr, duration_ms, log_result
+            )
             return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
         except ValueError as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("DELETE", request.key, client_addr, duration_ms, "INVALID_KEY")
+            self._log_request(
+                "DELETE", request.key, client_addr, duration_ms, "INVALID_KEY"
+            )
             context.set_code(StatusCode.INVALID_ARGUMENT)
             context.set_details(str(exc))
             return cache_pb2.CacheResponse()
@@ -167,7 +191,10 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             stats = await asyncio.to_thread(self._app.stats)
             duration_ms = (time.monotonic() - start_time) * 1000
 
-            result = f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} misses={stats.get('misses', 0)}"
+            result = (
+                f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} "
+                f"misses={stats.get('misses', 0)}"
+            )
             self._log_request("STATS", "", client_addr, duration_ms, result)
 
             max_memory_bytes = int(getattr(self._app.store, "max_memory_bytes", 0))

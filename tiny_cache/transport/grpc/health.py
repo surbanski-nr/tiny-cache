@@ -12,4 +12,3 @@ def add_grpc_health_service(server: grpc.aio.Server) -> grpc_health.HealthServic
     servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     servicer.set("cache.CacheService", health_pb2.HealthCheckResponse.SERVING)
     return servicer
-

@@ -11,7 +11,6 @@ from tiny_cache.infrastructure.tls import build_tls_server_credentials
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
-
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -33,7 +32,9 @@ async def test_grpc_tls_set_get_roundtrip():
     await server.start()
     channel = None
     try:
-        channel_credentials = grpc.ssl_channel_credentials(root_certificates=cert_path.read_bytes())
+        channel_credentials = grpc.ssl_channel_credentials(
+            root_certificates=cert_path.read_bytes()
+        )
         channel = grpc.aio.secure_channel(f"localhost:{port}", channel_credentials)
         await channel.channel_ready()
 

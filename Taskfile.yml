@@ -8,17 +8,33 @@ tasks:
     generates:
       - cache_pb2.py
       - cache_pb2_grpc.py
+      - cache_pb2.pyi
     cmds:
-      - python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. cache.proto
+      - uv run python -m grpc_tools.protoc -I. --python_out=. --pyi_out=. --grpc_python_out=. cache.proto
 
   clean:
     desc: Remove generated protobuf stubs
     cmds:
-      - python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py') if os.path.exists(p)]"
+      - python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
 
   test:
     desc: Run unit + integration tests
     deps: [gen]
     cmds:
-      - python -m pytest
+      - uv run pytest
 
+  format:
+    desc: Auto-format code (ruff)
+    cmds:
+      - uv run ruff format .
+
+  lint:
+    desc: Lint code (ruff)
+    cmds:
+      - uv run ruff check .
+
+  typecheck:
+    desc: Typecheck code (basedpyright)
+    deps: [gen]
+    cmds:
+      - uv run basedpyright

@@ -17,10 +17,10 @@ A lightweight gRPC cache service designed to work as a sidecar. Provides in-memo
 Local development is tested with Python 3.11 (matching the Docker image). See `.python-version`.
 
 ```bash
-# Setup environment
-python3 -m venv venv
-. ./venv/bin/activate
-pip install -r requirements.txt
+# Install uv: https://docs.astral.sh/uv/
+
+# Setup environment (creates `.venv/`)
+uv sync
 
 # Install task runner (Taskfile): https://taskfile.dev
 
@@ -28,7 +28,7 @@ pip install -r requirements.txt
 task gen
 
 # Start server
-python -m tiny_cache
+uv run python -m tiny_cache
 ```
 
 ### Docker
@@ -79,22 +79,24 @@ The repo includes a small CLI client for quick manual testing:
 
 ```bash
 task gen
-python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
-python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
-python -m tiny_cache.cli --target 127.0.0.1:50051 stats
+uv run python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
+uv run python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
+uv run python -m tiny_cache.cli --target 127.0.0.1:50051 stats
 ```
 
 ## Testing
 
 ```bash
-# Activate environment
-. ./venv/bin/activate
-
-# Install dev dependencies (includes pytest)
-pip install -r requirements-dev.txt
+# Install dependencies (includes test + dev tooling)
+uv sync
 
 # Run tests with coverage
-pytest --cov=tiny_cache --cov-report=term-missing
+uv run pytest --cov=tiny_cache --cov-report=term-missing
+
+# Lint/format/typecheck
+task lint
+task format
+task typecheck
 ```
 
 ## License

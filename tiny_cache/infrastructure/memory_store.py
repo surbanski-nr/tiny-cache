@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class CacheEntry:
-    def __init__(self, value: Any, ttl: Optional[int] = None, created_at: Optional[float] = None):
+    def __init__(
+        self, value: Any, ttl: Optional[int] = None, created_at: Optional[float] = None
+    ):
         self.value = value
         self.ttl = None if ttl is not None and ttl <= 0 else ttl
         self.created_at = created_at if created_at is not None else time.monotonic()
@@ -38,20 +40,32 @@ class CacheStore:
         if resolved_max_items < 1:
             raise ValueError(f"max_items must be >= 1, got {resolved_max_items}")
 
-        resolved_max_memory_mb = DEFAULT_MAX_MEMORY_MB if max_memory_mb is None else max_memory_mb
+        resolved_max_memory_mb = (
+            DEFAULT_MAX_MEMORY_MB if max_memory_mb is None else max_memory_mb
+        )
         if resolved_max_memory_mb < 1:
-            raise ValueError(f"max_memory_mb must be >= 1, got {resolved_max_memory_mb}")
+            raise ValueError(
+                f"max_memory_mb must be >= 1, got {resolved_max_memory_mb}"
+            )
 
-        resolved_cleanup_interval = DEFAULT_CLEANUP_INTERVAL if cleanup_interval is None else cleanup_interval
+        resolved_cleanup_interval = (
+            DEFAULT_CLEANUP_INTERVAL if cleanup_interval is None else cleanup_interval
+        )
         if resolved_cleanup_interval < 1:
-            raise ValueError(f"cleanup_interval must be >= 1, got {resolved_cleanup_interval}")
+            raise ValueError(
+                f"cleanup_interval must be >= 1, got {resolved_cleanup_interval}"
+            )
 
         self.max_items = resolved_max_items
         self.max_memory_bytes = resolved_max_memory_mb * 1024 * 1024
 
-        resolved_max_value_bytes = self.max_memory_bytes if max_value_bytes is None else max_value_bytes
+        resolved_max_value_bytes = (
+            self.max_memory_bytes if max_value_bytes is None else max_value_bytes
+        )
         if resolved_max_value_bytes < 1:
-            raise ValueError(f"max_value_bytes must be >= 1, got {resolved_max_value_bytes}")
+            raise ValueError(
+                f"max_value_bytes must be >= 1, got {resolved_max_value_bytes}"
+            )
         self.max_value_bytes = min(resolved_max_value_bytes, self.max_memory_bytes)
 
         self.cleanup_interval = resolved_cleanup_interval
@@ -155,7 +169,10 @@ class CacheStore:
         return True
 
     def _evict_to_fit(self, required_bytes: int) -> bool:
-        while self.current_memory_bytes + required_bytes > self.max_memory_bytes and self.store:
+        while (
+            self.current_memory_bytes + required_bytes > self.max_memory_bytes
+            and self.store
+        ):
             if not self._evict_lru():
                 return False
         return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
@@ -205,4 +222,3 @@ class CacheStore:
         self._stop_event.set()
         if self.cleaner_thread is not None and self.cleaner_thread.is_alive():
             self.cleaner_thread.join(timeout=5)
-

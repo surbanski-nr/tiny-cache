@@ -10,7 +10,6 @@ from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.transport.active_requests import ActiveRequests
 from tiny_cache.transport.http.health_app import create_health_app
 
-
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -21,11 +20,13 @@ async def _start_app(app: web.Application) -> tuple[web.AppRunner, int]:
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
 
-    if site._server is None or not site._server.sockets:
+    server = site._server
+    sockets = getattr(server, "sockets", None) if server is not None else None
+    if not sockets:
         await runner.cleanup()
         raise RuntimeError("health server did not start")
 
-    port = site._server.sockets[0].getsockname()[1]
+    port = sockets[0].getsockname()[1]
     return runner, port
 
 
@@ -40,7 +41,9 @@ async def test_health_endpoints_ok():
         async with aiohttp.ClientSession() as session:
             async with session.get(f"http://127.0.0.1:{port}/health") as resp:
                 assert resp.status == 200
-                assert resp.headers.get("Content-Type", "").startswith("application/json")
+                assert resp.headers.get("Content-Type", "").startswith(
+                    "application/json"
+                )
                 request_id = resp.headers.get("x-request-id")
                 assert request_id
                 payload = await resp.json()
@@ -82,7 +85,9 @@ async def test_health_endpoints_ok():
 
             async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
                 assert resp.status == 200
-                assert resp.headers.get("Content-Type", "").startswith("application/json")
+                assert resp.headers.get("Content-Type", "").startswith(
+                    "application/json"
+                )
                 payload = await resp.json()
                 assert payload["size"] == 0
                 assert payload["hits"] == 0

@@ -1,24 +1,33 @@
 import json
 import logging
 from pathlib import Path
-
-import pytest
+from typing import Any, cast
 
 import grpc
+import pytest
 
 import cache_pb2
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import validate_key
 from tiny_cache.infrastructure.config import Settings
-from tiny_cache.infrastructure.logging import JsonFormatter, RequestIdFilter, configure_logging
+from tiny_cache.infrastructure.logging import (
+    JsonFormatter,
+    RequestIdFilter,
+    configure_logging,
+)
 from tiny_cache.infrastructure.memory_store import CacheStore
-from tiny_cache.infrastructure.tls import add_grpc_listen_port, build_tls_server_credentials
+from tiny_cache.infrastructure.tls import (
+    add_grpc_listen_port,
+    build_tls_server_credentials,
+)
 from tiny_cache.transport.active_requests import ActiveRequests
-from tiny_cache.transport.grpc.interceptors import ActiveRequestsInterceptor, RequestIdInterceptor
+from tiny_cache.transport.grpc.interceptors import (
+    ActiveRequestsInterceptor,
+    RequestIdInterceptor,
+)
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import HealthCheckHandler
-
 
 pytestmark = [pytest.mark.unit]
 
@@ -62,11 +71,18 @@ async def test_active_requests_interceptor_tracks_inflight_call():
     async def continuation(_details):
         return method_handler
 
-    wrapped = await interceptor.intercept_service(continuation, Details())
-    assert wrapped is not None
+    wrapped = await interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
     assert counter.value == 0
 
-    task = asyncio.create_task(wrapped.unary_unary(None, object()))
+    assert wrapped.unary_unary is not None
+    task = asyncio.create_task(
+        wrapped.unary_unary(
+            None,
+            cast(grpc.ServicerContext, object()),
+        )
+    )
     await started.wait()
     assert counter.value == 1
     finish.set()
@@ -89,7 +105,7 @@ def test_request_id_filter_and_json_formatter_include_request_id():
 
         filt = RequestIdFilter()
         assert filt.filter(record) is True
-        assert record.request_id == "rid-123"
+        assert getattr(record, "request_id") == "rid-123"
 
         formatter = JsonFormatter()
         payload = json.loads(formatter.format(record))
@@ -112,7 +128,7 @@ def test_configure_logging_supports_text_and_json_formatters():
 
 
 def _settings(**overrides) -> Settings:
-    base = dict(
+    base: dict[str, Any] = dict(
         max_items=1,
         max_memory_mb=1,
         max_value_bytes=1,
@@ -141,7 +157,9 @@ def test_tls_credentials_and_listen_port_branches():
     assert isinstance(creds, grpc.ServerCredentials)
 
     with pytest.raises(ValueError, match="CACHE_TLS_CLIENT_CA_PATH must be set"):
-        build_tls_server_credentials(str(cert_path), str(key_path), require_client_auth=True)
+        build_tls_server_credentials(
+            str(cert_path), str(key_path), require_client_auth=True
+        )
 
     creds_mtls = build_tls_server_credentials(
         str(cert_path),
@@ -170,7 +188,9 @@ def test_tls_credentials_and_listen_port_branches():
     with pytest.raises(ValueError, match="CACHE_TLS_CERT_PATH and CACHE_TLS_KEY_PATH"):
         add_grpc_listen_port(server, "127.0.0.1:0", _settings(tls_enabled=True))
 
-    secure_settings = _settings(tls_enabled=True, tls_cert_path=str(cert_path), tls_key_path=str(key_path))
+    secure_settings = _settings(
+        tls_enabled=True, tls_cert_path=str(cert_path), tls_key_path=str(key_path)
+    )
     assert add_grpc_listen_port(server, "127.0.0.1:0", secure_settings) == 2345
 
 
@@ -212,7 +232,9 @@ class _FakeContext:
 
 @pytest.mark.asyncio
 async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
-    store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False)
+    store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
+    )
     app = CacheApplicationService(store)
     service = GrpcCacheService(app)
 
@@ -228,6 +250,15 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def get(self, _key: str):
             return "hello"
 
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> bool:
+            raise AssertionError("not used")
+
+        def delete(self, _key: str) -> bool:
+            raise AssertionError("not used")
+
+        def stats(self) -> dict[str, Any]:
+            raise AssertionError("not used")
+
     value = await GrpcCacheService(StringApp()).Get(
         cache_pb2.CacheKey(key="k"),
         _FakeContext(metadata=[("x-request-id", "rid-1")]),
@@ -241,6 +272,15 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
 
         def get(self, _key: str):
             return 123
+
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> bool:
+            raise AssertionError("not used")
+
+        def delete(self, _key: str) -> bool:
+            raise AssertionError("not used")
+
+        def stats(self) -> dict[str, Any]:
+            raise AssertionError("not used")
 
     value = await GrpcCacheService(ObjApp()).Get(
         cache_pb2.CacheKey(key="k"),
@@ -257,6 +297,9 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     class BoomApp:
         def __init__(self):
             self.store = store
+
+        def get(self, _key: str):
+            raise RuntimeError("boom")
 
         def set(self, *_args, **_kwargs):
             raise RuntimeError("boom")
@@ -317,12 +360,14 @@ async def test_request_id_interceptor_sets_context_and_metadata():
     async def continuation(_details):
         return method_handler
 
-    wrapped = await interceptor.intercept_service(continuation, Details())
-    assert wrapped is not None
+    wrapped = await interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
+    assert wrapped.unary_unary is not None
 
     ctx = _FakeContext(metadata=[("x-request-id", "rid-123")])
     assert request_id_var.get() == "-"
-    response = await wrapped.unary_unary(None, ctx)
+    response = await wrapped.unary_unary(None, cast(grpc.ServicerContext, ctx))
     assert response == "rid-123"
     assert ("x-request-id", "rid-123") in getattr(ctx, "initial_metadata", ())
     assert request_id_var.get() == "-"
