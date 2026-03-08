@@ -17,5 +17,5 @@ This list focuses on correctness, startup safety, contract clarity, and operatio
 - [x] Decide whether TTL expiry should happen at `elapsed >= ttl` or `elapsed > ttl` in `tiny_cache/infrastructure/memory_store.py`, document the rule, and add a boundary test for it. The in-memory backend now expires entries at `elapsed >= ttl`.
 - [x] Ensure `/stats` and `/metrics` exclude expired entries before reporting. `CacheStore.stats()` now purges expired entries before calculating size and memory usage.
 - [x] Validate enumerated settings such as `CACHE_LOG_FORMAT` and `CACHE_LOG_LEVEL` in `tiny_cache/infrastructure/config.py` instead of silently accepting unexpected values.
-- [ ] Add a startup or self-test check that confirms required generated protobuf files exist before booting the service or running the CLI.
+- [x] Add a startup or self-test check that confirms required generated protobuf files exist before booting the service or running the CLI.
 - [ ] Add a compose-based test stack file or remove references to `docker-compose.test-deps.yml` from developer workflow guidance. The current instructions mention a file that is not present in the repo.

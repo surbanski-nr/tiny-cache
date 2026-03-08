@@ -9,10 +9,13 @@ import grpc
 from aiohttp import web
 from grpc_health.v1 import health_pb2
 
-import cache_pb2_grpc
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.config import Settings, load_settings
 from tiny_cache.infrastructure.logging import configure_logging
+from tiny_cache.infrastructure.protobuf import (
+    ensure_generated_protobuf_modules,
+    load_generated_protobuf_modules,
+)
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.tls import add_grpc_listen_port
 from tiny_cache.transport.active_requests import ActiveRequests
@@ -29,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 async def serve(settings: Settings | None = None) -> None:
     settings = settings or load_settings()
+
+    _, cache_pb2_grpc = load_generated_protobuf_modules()
 
     cache_store = CacheStore(
         max_items=settings.max_items,
@@ -109,6 +114,7 @@ def main() -> None:
         os.getenv("CACHE_LOG_FORMAT", "text"),
     )
     try:
+        ensure_generated_protobuf_modules()
         settings = load_settings()
         asyncio.run(serve(settings))
     except Exception:

@@ -7,6 +7,7 @@ import grpc
 import pytest
 
 import cache_pb2
+import tiny_cache.cli as cli_module
 import tiny_cache.main as main_module
 from tiny_cache.application.ports import CacheSetStatus
 from tiny_cache.application.request_context import request_id_var
@@ -19,6 +20,7 @@ from tiny_cache.infrastructure.logging import (
     configure_logging,
 )
 from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.infrastructure.protobuf import ensure_generated_protobuf_modules
 from tiny_cache.infrastructure.tls import (
     add_grpc_listen_port,
     build_tls_server_credentials,
@@ -347,6 +349,40 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         request_id_var.reset(token)
 
 
+def test_ensure_generated_protobuf_modules_requires_generated_files(tmp_path):
+    (tmp_path / "cache_pb2.py").write_text("# generated")
+    (tmp_path / "cache_pb2_grpc.py").write_text("# generated")
+
+    ensure_generated_protobuf_modules(tmp_path)
+
+    (tmp_path / "cache_pb2_grpc.py").unlink()
+
+    with pytest.raises(RuntimeError, match="Run `uv run task gen`"):
+        ensure_generated_protobuf_modules(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_cli_run_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
+    def raise_missing() -> None:
+        raise RuntimeError("missing generated protobuf")
+
+    monkeypatch.setattr(cli_module, "load_generated_protobuf_modules", raise_missing)
+
+    with pytest.raises(RuntimeError, match="missing generated protobuf"):
+        await cli_module.run(["stats"])
+
+
+def test_main_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
+    def raise_missing() -> None:
+        raise RuntimeError("missing generated protobuf")
+
+    monkeypatch.setattr(main_module, "ensure_generated_protobuf_modules", raise_missing)
+    monkeypatch.setattr(main_module, "configure_logging", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="missing generated protobuf"):
+        main_module.main()
+
+
 @pytest.mark.asyncio
 async def test_grpc_set_returns_specific_resource_exhausted_reasons():
     store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False)
@@ -413,10 +449,15 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(monkeypatch):
 
     monkeypatch.setattr(main_module, "CacheStore", lambda **kwargs: fake_store)
     monkeypatch.setattr(main_module, "GrpcCacheService", lambda app: object())
+    class FakeCachePb2Grpc:
+        @staticmethod
+        def add_CacheServiceServicer_to_server(servicer, server) -> None:
+            return None
+
     monkeypatch.setattr(
-        main_module.cache_pb2_grpc,
-        "add_CacheServiceServicer_to_server",
-        lambda servicer, server: None,
+        main_module,
+        "load_generated_protobuf_modules",
+        lambda: (object(), FakeCachePb2Grpc()),
     )
     monkeypatch.setattr(main_module, "add_grpc_health_service", lambda server: object())
     monkeypatch.setattr(main_module, "add_grpc_listen_port", lambda server, addr, settings: 0)

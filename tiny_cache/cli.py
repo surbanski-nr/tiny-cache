@@ -11,8 +11,8 @@ from typing import Sequence
 
 import grpc
 
-import cache_pb2
-import cache_pb2_grpc
+from tiny_cache.infrastructure.protobuf import load_generated_protobuf_modules
+
 
 REQUEST_ID_HEADER = "x-request-id"
 
@@ -151,6 +151,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
     _validate_set_args(parser, args)
 
     request_id = args.request_id or uuid.uuid4().hex
+    cache_pb2, cache_pb2_grpc = load_generated_protobuf_modules()
 
     channel = await _build_channel(args)
     try:
