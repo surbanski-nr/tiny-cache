@@ -99,6 +99,52 @@ async def test_active_requests_interceptor_tracks_inflight_call():
     assert counter.value == 0
 
 
+@pytest.mark.asyncio
+async def test_active_requests_interceptor_tracks_unary_stream_call():
+    import asyncio
+
+    counter = ActiveRequests()
+    interceptor = ActiveRequestsInterceptor(counter)
+
+    class Details:
+        method = "/cache.CacheService/Watch"
+
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def handler(_request, _context):
+        started.set()
+        await finish.wait()
+        yield "ok"
+
+    method_handler = grpc.unary_stream_rpc_method_handler(handler)
+
+    async def continuation(_details):
+        return method_handler
+
+    wrapped = await interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
+    assert counter.value == 0
+    assert wrapped.unary_stream is not None
+
+    async def consume() -> list[str]:
+        return [
+            item
+            async for item in wrapped.unary_stream(
+                None,
+                cast(grpc.ServicerContext, object()),
+            )
+        ]
+
+    task = asyncio.create_task(consume())
+    await started.wait()
+    assert counter.value == 1
+    finish.set()
+    assert await task == ["ok"]
+    assert counter.value == 0
+
+
 def test_request_id_filter_and_json_formatter_include_request_id():
     token = request_id_var.set("rid-123")
     try:
@@ -538,6 +584,37 @@ async def test_request_id_interceptor_sets_context_and_metadata():
     response = await wrapped.unary_unary(None, cast(grpc.ServicerContext, ctx))
     assert response == "rid-123"
     assert ("x-request-id", "rid-123") in getattr(ctx, "initial_metadata", ())
+    assert request_id_var.get() == "-"
+
+
+@pytest.mark.asyncio
+async def test_request_id_interceptor_sets_context_for_unary_stream():
+    interceptor = RequestIdInterceptor()
+
+    async def handler(_request, _context):
+        yield request_id_var.get()
+
+    method_handler = grpc.unary_stream_rpc_method_handler(handler)
+
+    class Details:
+        method = "/cache.CacheService/Watch"
+
+    async def continuation(_details):
+        return method_handler
+
+    wrapped = await interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
+    assert wrapped.unary_stream is not None
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-stream")])
+    assert request_id_var.get() == "-"
+    items = [
+        item
+        async for item in wrapped.unary_stream(None, cast(grpc.ServicerContext, ctx))
+    ]
+    assert items == ["rid-stream"]
+    assert ("x-request-id", "rid-stream") in getattr(ctx, "initial_metadata", ())
     assert request_id_var.get() == "-"
 
 

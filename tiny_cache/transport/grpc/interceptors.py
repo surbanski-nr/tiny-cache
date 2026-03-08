@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 import grpc
@@ -13,6 +14,10 @@ from tiny_cache.transport.active_requests import ActiveRequests
 logger = logging.getLogger(__name__)
 
 REQUEST_ID_HEADER = "x-request-id"
+
+UnaryBehavior = Callable[[Any, Any], Awaitable[Any]]
+StreamBehavior = Callable[[Any, Any], AsyncIterator[Any]]
+ScopeFactory = Callable[[Any], Any]
 
 
 def _get_request_id_from_metadata(metadata: Any) -> str | None:
@@ -25,7 +30,81 @@ def _get_request_id_from_metadata(metadata: Any) -> str | None:
     return None
 
 
+def _wrap_unary_behavior(
+    behavior: UnaryBehavior,
+    scope_factory: ScopeFactory,
+) -> UnaryBehavior:
+    async def _wrapped(request_or_iterator: Any, context: Any) -> Any:
+        async with scope_factory(context):
+            return await behavior(request_or_iterator, context)
+
+    return _wrapped
+
+
+def _wrap_stream_behavior(
+    behavior: StreamBehavior,
+    scope_factory: ScopeFactory,
+) -> StreamBehavior:
+    async def _wrapped(request_or_iterator: Any, context: Any) -> AsyncIterator[Any]:
+        async with scope_factory(context):
+            async for item in behavior(request_or_iterator, context):
+                yield item
+
+    return _wrapped
+
+
+def _wrap_rpc_method_handler(
+    handler: grpc.RpcMethodHandler,
+    scope_factory: ScopeFactory,
+) -> grpc.RpcMethodHandler:
+    if handler.unary_unary:
+        return grpc.unary_unary_rpc_method_handler(
+            _wrap_unary_behavior(handler.unary_unary, scope_factory),
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
+
+    if handler.unary_stream:
+        return grpc.unary_stream_rpc_method_handler(
+            _wrap_stream_behavior(handler.unary_stream, scope_factory),
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
+
+    if handler.stream_unary:
+        return grpc.stream_unary_rpc_method_handler(
+            _wrap_unary_behavior(handler.stream_unary, scope_factory),
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
+
+    if handler.stream_stream:
+        return grpc.stream_stream_rpc_method_handler(
+            _wrap_stream_behavior(handler.stream_stream, scope_factory),
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
+
+    return handler
+
+
 class RequestIdInterceptor(grpc.aio.ServerInterceptor):
+    @asynccontextmanager
+    async def _request_id_scope(self, context: Any) -> AsyncIterator[None]:
+        request_id = (
+            _get_request_id_from_metadata(context.invocation_metadata())
+            or uuid.uuid4().hex
+        )
+        token = request_id_var.set(request_id)
+        try:
+            try:
+                await context.send_initial_metadata(((REQUEST_ID_HEADER, request_id),))
+            except Exception:
+                logger.debug("Unable to send request id metadata", exc_info=True)
+            yield
+        finally:
+            request_id_var.reset(token)
+
     async def intercept_service(
         self,
         continuation: Callable[
@@ -36,129 +115,28 @@ class RequestIdInterceptor(grpc.aio.ServerInterceptor):
         handler = await continuation(handler_call_details)
         if handler is None:
             return None
-
-        async def _run_with_request_id(
-            context: Any,
-            action: Callable[[], Awaitable[Any]],
-        ) -> Any:
-            request_id = (
-                _get_request_id_from_metadata(context.invocation_metadata())
-                or uuid.uuid4().hex
-            )
-            token = request_id_var.set(request_id)
-            try:
-                await context.send_initial_metadata(((REQUEST_ID_HEADER, request_id),))
-            except Exception:
-                logger.debug("Unable to send request id metadata", exc_info=True)
-            try:
-                return await action()
-            finally:
-                request_id_var.reset(token)
-
-        def _wrap_unary_unary(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request: Any, context: Any) -> Any:
-                return await _run_with_request_id(
-                    context, lambda: behavior(request, context)
-                )
-
-            return _wrapped
-
-        def _wrap_unary_stream(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request: Any, context: Any) -> Any:
-                request_id = (
-                    _get_request_id_from_metadata(context.invocation_metadata())
-                    or uuid.uuid4().hex
-                )
-                token = request_id_var.set(request_id)
-                try:
-                    try:
-                        await context.send_initial_metadata(
-                            ((REQUEST_ID_HEADER, request_id),)
-                        )
-                    except Exception:
-                        logger.debug(
-                            "Unable to send request id metadata", exc_info=True
-                        )
-                    async for item in behavior(request, context):
-                        yield item
-                finally:
-                    request_id_var.reset(token)
-
-            return _wrapped
-
-        def _wrap_stream_unary(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request_iterator: Any, context: Any) -> Any:
-                return await _run_with_request_id(
-                    context, lambda: behavior(request_iterator, context)
-                )
-
-            return _wrapped
-
-        def _wrap_stream_stream(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request_iterator: Any, context: Any) -> Any:
-                request_id = (
-                    _get_request_id_from_metadata(context.invocation_metadata())
-                    or uuid.uuid4().hex
-                )
-                token = request_id_var.set(request_id)
-                try:
-                    try:
-                        await context.send_initial_metadata(
-                            ((REQUEST_ID_HEADER, request_id),)
-                        )
-                    except Exception:
-                        logger.debug(
-                            "Unable to send request id metadata", exc_info=True
-                        )
-                    async for item in behavior(request_iterator, context):
-                        yield item
-                finally:
-                    request_id_var.reset(token)
-
-            return _wrapped
-
-        if handler.unary_unary:
-            return grpc.unary_unary_rpc_method_handler(
-                _wrap_unary_unary(handler.unary_unary),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.unary_stream:
-            return grpc.unary_stream_rpc_method_handler(
-                _wrap_unary_stream(handler.unary_stream),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.stream_unary:
-            return grpc.stream_unary_rpc_method_handler(
-                _wrap_stream_unary(handler.stream_unary),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.stream_stream:
-            return grpc.stream_stream_rpc_method_handler(
-                _wrap_stream_stream(handler.stream_stream),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        return handler
+        return _wrap_rpc_method_handler(handler, self._request_id_scope)
 
 
 class ActiveRequestsInterceptor(grpc.aio.ServerInterceptor):
     def __init__(self, active_requests: ActiveRequests):
         self._active_requests = active_requests
+
+    @asynccontextmanager
+    async def _active_request_scope(self, rpc_method: str) -> AsyncIterator[None]:
+        self._active_requests.increment()
+        logger.debug(
+            "RPC started %s (active=%s)", rpc_method, self._active_requests.value
+        )
+        try:
+            yield
+        finally:
+            self._active_requests.decrement()
+            logger.debug(
+                "RPC finished %s (active=%s)",
+                rpc_method,
+                self._active_requests.value,
+            )
 
     async def intercept_service(
         self,
@@ -172,116 +150,7 @@ class ActiveRequestsInterceptor(grpc.aio.ServerInterceptor):
             return None
 
         rpc_method = getattr(handler_call_details, "method", "unknown")
-
-        async def _run_with_active_request(
-            action: Callable[[], Awaitable[Any]],
-        ) -> Any:
-            self._active_requests.increment()
-            logger.debug(
-                "RPC started %s (active=%s)", rpc_method, self._active_requests.value
-            )
-            try:
-                return await action()
-            finally:
-                self._active_requests.decrement()
-                logger.debug(
-                    "RPC finished %s (active=%s)",
-                    rpc_method,
-                    self._active_requests.value,
-                )
-
-        def _wrap_unary_unary(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request: Any, context: Any) -> Any:
-                return await _run_with_active_request(
-                    lambda: behavior(request, context)
-                )
-
-            return _wrapped
-
-        def _wrap_unary_stream(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request: Any, context: Any) -> Any:
-                self._active_requests.increment()
-                logger.debug(
-                    "RPC started %s (active=%s)",
-                    rpc_method,
-                    self._active_requests.value,
-                )
-                try:
-                    async for item in behavior(request, context):
-                        yield item
-                finally:
-                    self._active_requests.decrement()
-                    logger.debug(
-                        "RPC finished %s (active=%s)",
-                        rpc_method,
-                        self._active_requests.value,
-                    )
-
-            return _wrapped
-
-        def _wrap_stream_unary(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request_iterator: Any, context: Any) -> Any:
-                return await _run_with_active_request(
-                    lambda: behavior(request_iterator, context)
-                )
-
-            return _wrapped
-
-        def _wrap_stream_stream(
-            behavior: Any,
-        ) -> Any:
-            async def _wrapped(request_iterator: Any, context: Any) -> Any:
-                self._active_requests.increment()
-                logger.debug(
-                    "RPC started %s (active=%s)",
-                    rpc_method,
-                    self._active_requests.value,
-                )
-                try:
-                    async for item in behavior(request_iterator, context):
-                        yield item
-                finally:
-                    self._active_requests.decrement()
-                    logger.debug(
-                        "RPC finished %s (active=%s)",
-                        rpc_method,
-                        self._active_requests.value,
-                    )
-
-            return _wrapped
-
-        if handler.unary_unary:
-            return grpc.unary_unary_rpc_method_handler(
-                _wrap_unary_unary(handler.unary_unary),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.unary_stream:
-            return grpc.unary_stream_rpc_method_handler(
-                _wrap_unary_stream(handler.unary_stream),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.stream_unary:
-            return grpc.stream_unary_rpc_method_handler(
-                _wrap_stream_unary(handler.stream_unary),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        if handler.stream_stream:
-            return grpc.stream_stream_rpc_method_handler(
-                _wrap_stream_stream(handler.stream_stream),
-                request_deserializer=handler.request_deserializer,
-                response_serializer=handler.response_serializer,
-            )
-
-        return handler
+        return _wrap_rpc_method_handler(
+            handler,
+            lambda _context: self._active_request_scope(rpc_method),
+        )
