@@ -15,6 +15,7 @@ from tiny_cache.infrastructure.protobuf import load_generated_protobuf_modules
 
 
 REQUEST_ID_HEADER = "x-request-id"
+NAMESPACE_HEADER = "x-cache-namespace"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -39,6 +40,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--show-request-id",
         action="store_true",
         help="print the server x-request-id response metadata to stderr",
+    )
+    parser.add_argument(
+        "--namespace",
+        default=None,
+        help="optional cache namespace sent as x-cache-namespace metadata",
     )
     parser.add_argument(
         "--tls",
@@ -134,8 +140,11 @@ async def _build_channel(args: argparse.Namespace) -> grpc.aio.Channel:
     return grpc.aio.secure_channel(args.target, credentials)
 
 
-def _metadata(request_id: str) -> tuple[tuple[str, str]]:
-    return ((REQUEST_ID_HEADER, request_id),)
+def _metadata(request_id: str, namespace: str | None = None) -> tuple[tuple[str, str], ...]:
+    metadata: list[tuple[str, str]] = [(REQUEST_ID_HEADER, request_id)]
+    if namespace:
+        metadata.append((NAMESPACE_HEADER, namespace))
+    return tuple(metadata)
 
 
 def _get_response_request_id(metadata: grpc.aio.Metadata) -> str | None:
@@ -161,7 +170,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
         if args.command == "get":
             call = stub.Get(
                 cache_pb2.CacheKey(key=args.key),
-                metadata=_metadata(request_id),
+                metadata=_metadata(request_id, args.namespace),
                 timeout=args.timeout,
             )
             response = await call
@@ -185,7 +194,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
             value = _parse_set_value(args)
             call = stub.Set(
                 cache_pb2.CacheItem(key=args.key, value=value, ttl=int(args.ttl)),
-                metadata=_metadata(request_id),
+                metadata=_metadata(request_id, args.namespace),
                 timeout=args.timeout,
             )
             response = await call
@@ -205,7 +214,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
         if args.command == "delete":
             call = stub.Delete(
                 cache_pb2.CacheKey(key=args.key),
-                metadata=_metadata(request_id),
+                metadata=_metadata(request_id, args.namespace),
                 timeout=args.timeout,
             )
             response = await call
@@ -225,7 +234,7 @@ async def run(argv: Sequence[str] | None = None) -> int:
         if args.command == "stats":
             call = stub.Stats(
                 cache_pb2.Empty(),
-                metadata=_metadata(request_id),
+                metadata=_metadata(request_id, args.namespace),
                 timeout=args.timeout,
             )
             response = await call

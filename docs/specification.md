@@ -19,6 +19,7 @@ The following are intended to remain stable across backends:
 - `Delete`: idempotent success for missing keys.
 - `Set`: size-limit or capacity failures return `RESOURCE_EXHAUSTED`; details may distinguish oversize values from exhausted capacity.
 - Request IDs: `x-request-id` is propagated into logs and error details.
+- Optional namespace isolation: gRPC callers may send `x-cache-namespace` metadata to scope keys under a logical namespace; omitted or blank metadata uses the shared keyspace.
 
 The following are backend-specific (the current in-memory backend behavior is described below):
 
@@ -154,6 +155,10 @@ The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cle
   - Generated otherwise
   - Returned to clients as `x-request-id` response metadata (initial metadata)
   - Included in logs and in `INTERNAL` error details (`request_id=...`)
+- Namespace metadata:
+  - Accepted from `x-cache-namespace` request metadata when provided
+  - Trimmed and validated to 64 safe characters (`A-Z`, `a-z`, `0-9`, `.`, `_`, `-`)
+  - Applied in the application layer as an isolated storage-key prefix before calling the backend port
 
 ### HTTP Health + Metrics API
 

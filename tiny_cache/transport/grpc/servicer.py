@@ -18,22 +18,31 @@ from tiny_cache.application.ports import (
     CacheStorePort,
 )
 from tiny_cache.application.request_context import request_id_var
+from tiny_cache.domain.validation import validate_namespace
 
 logger = logging.getLogger(__name__)
 
 VALUE_TOO_LARGE_MESSAGE = "Value exceeds maximum allowed cache entry size"
 CAPACITY_EXHAUSTED_MESSAGE = "Cache capacity exhausted and cannot accommodate new entry"
+NAMESPACE_HEADER = "x-cache-namespace"
 
 
 class CacheApp(Protocol):
     @property
     def store(self) -> CacheStorePort: ...
 
-    def get(self, key: str, /) -> bytes | None: ...
+    def get(self, key: str, /, namespace: str | None = None) -> bytes | None: ...
 
-    def set(self, key: str, value: bytes, ttl_seconds: int, /) -> CacheSetStatus: ...
+    def set(
+        self,
+        key: str,
+        value: bytes,
+        ttl_seconds: int,
+        /,
+        namespace: str | None = None,
+    ) -> CacheSetStatus: ...
 
-    def delete(self, key: str, /) -> bool: ...
+    def delete(self, key: str, /, namespace: str | None = None) -> bool: ...
 
     def stats(self) -> CacheStatsSnapshot: ...
 
@@ -81,6 +90,17 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         except Exception:
             logger.debug("Unable to read client peer from context", exc_info=True)
             return "unknown"
+
+    def _namespace_from_context(self, context: Any) -> str | None:
+        try:
+            for key, value in context.invocation_metadata() or ():
+                if isinstance(key, str) and key.lower() == NAMESPACE_HEADER and value:
+                    return validate_namespace(str(value))
+        except ValueError:
+            raise
+        except Exception:
+            logger.debug("Unable to read namespace from metadata", exc_info=True)
+        return None
 
     def _log_request(
         self,
@@ -154,11 +174,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         self,
         keys: list[str],
         request_id: str,
+        namespace: str | None,
     ) -> list[cache_pb2.CacheLookup]:
         results: list[cache_pb2.CacheLookup] = []
         for key in keys:
             try:
-                value = self._app.get(key)
+                value = self._app.get(key, namespace=namespace)
                 if value is None:
                     results.append(cache_pb2.CacheLookup(key=key, found=False))
                     continue
@@ -184,11 +205,14 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         self,
         items: list[cache_pb2.CacheItem],
         request_id: str,
+        namespace: str | None,
     ) -> list[cache_pb2.CacheOperationResult]:
         results: list[cache_pb2.CacheOperationResult] = []
         for item in items:
             try:
-                set_status = self._app.set(item.key, item.value, item.ttl)
+                set_status = self._app.set(
+                    item.key, item.value, item.ttl, namespace=namespace
+                )
                 log_result, error = self._set_status_details(set_status)
                 if error is None:
                     results.append(
@@ -228,11 +252,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         self,
         keys: list[str],
         request_id: str,
+        namespace: str | None,
     ) -> list[cache_pb2.CacheOperationResult]:
         results: list[cache_pb2.CacheOperationResult] = []
         for key in keys:
             try:
-                self._app.delete(key)
+                self._app.delete(key, namespace=namespace)
                 results.append(
                     cache_pb2.CacheOperationResult(
                         key=key,
@@ -262,7 +287,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
-            value = await asyncio.to_thread(self._app.get, request.key)
+            namespace = self._namespace_from_context(context)
+            value = await asyncio.to_thread(self._app.get, request.key, namespace)
             duration_ms = state.duration_ms()
 
             if value is None:
@@ -295,10 +321,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
+            namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
                 self._build_multi_get_items,
                 list(request.keys),
                 state.request_id,
+                namespace,
             )
             hits = sum(1 for item in items if item.found)
             errors = sum(1 for item in items if item.error)
@@ -327,8 +355,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
+            namespace = self._namespace_from_context(context)
             set_status = await asyncio.to_thread(
-                self._app.set, request.key, request.value, request.ttl
+                self._app.set, request.key, request.value, request.ttl, namespace
             )
             duration_ms = state.duration_ms()
             log_result, error = self._set_status_details(set_status)
@@ -369,10 +398,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
+            namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
                 self._build_multi_set_results,
                 list(request.items),
                 state.request_id,
+                namespace,
             )
             ok_count = sum(
                 1 for item in items if item.status == cache_pb2.CacheStatus.OK
@@ -402,7 +433,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
-            deleted = await asyncio.to_thread(self._app.delete, request.key)
+            namespace = self._namespace_from_context(context)
+            deleted = await asyncio.to_thread(self._app.delete, request.key, namespace)
             log_result = "OK" if deleted else "OK_MISSING"
             self._log_request(
                 "DELETE",
@@ -431,10 +463,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         state = self._begin_request(context)
 
         try:
+            namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
                 self._build_multi_delete_results,
                 list(request.keys),
                 state.request_id,
+                namespace,
             )
             ok_count = sum(
                 1 for item in items if item.status == cache_pb2.CacheStatus.OK

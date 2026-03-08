@@ -12,7 +12,7 @@ import tiny_cache.main as main_module
 from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
-from tiny_cache.domain.validation import validate_key, validate_value
+from tiny_cache.domain.validation import validate_key, validate_namespace, validate_value
 from tiny_cache.infrastructure.config import Settings
 from tiny_cache.infrastructure.logging import (
     JsonFormatter,
@@ -44,6 +44,40 @@ def test_validate_key_rejects_non_string():
 def test_validate_value_rejects_non_bytes():
     with pytest.raises(TypeError, match="Cache value must be bytes"):
         validate_value("value")  # type: ignore[arg-type]
+
+
+def test_validate_namespace_rejects_invalid_values():
+    assert validate_namespace(None) is None
+    assert validate_namespace("  team-a  ") == "team-a"
+    assert validate_namespace("   ") is None
+
+    with pytest.raises(ValueError, match="Namespace must contain only"):
+        validate_namespace("team/a")
+
+
+def test_application_service_isolates_namespaces():
+    store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
+    )
+    app = CacheApplicationService(store)
+
+    assert app.set("shared", b"team-a", 0, namespace="team-a") is CacheSetStatus.OK
+    assert app.set("shared", b"team-b", 0, namespace="team-b") is CacheSetStatus.OK
+
+    assert app.get("shared", namespace="team-a") == b"team-a"
+    assert app.get("shared", namespace="team-b") == b"team-b"
+    assert app.get("shared") is None
+
+    with store.lock:
+        assert "shared" not in store.store
+        assert "6:team-a:shared" in store.store
+        assert "6:team-b:shared" in store.store
+
+    assert app.delete("shared", namespace="team-a") is True
+    assert app.get("shared", namespace="team-a") is None
+    assert app.get("shared", namespace="team-b") == b"team-b"
+
+    store.stop()
 
 
 def test_active_requests_counter_increments_and_decrements():
@@ -302,13 +336,18 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def __init__(self):
             self.store = store
 
-        def get(self, _key: str):
+        def get(self, _key: str, namespace: str | None = None):
+            assert namespace is None
             return b"hello"
 
-        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
+        def set(
+            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+        ) -> CacheSetStatus:
+            assert namespace is None
             raise AssertionError("not used")
 
-        def delete(self, _key: str) -> bool:
+        def delete(self, _key: str, namespace: str | None = None) -> bool:
+            assert namespace is None
             raise AssertionError("not used")
 
         def stats(self) -> CacheStatsSnapshot:
@@ -325,13 +364,18 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def __init__(self):
             self.store = store
 
-        def get(self, _key: str):
+        def get(self, _key: str, namespace: str | None = None):
+            assert namespace is None
             return 123
 
-        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
+        def set(
+            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+        ) -> CacheSetStatus:
+            assert namespace is None
             raise AssertionError("not used")
 
-        def delete(self, _key: str) -> bool:
+        def delete(self, _key: str, namespace: str | None = None) -> bool:
+            assert namespace is None
             raise AssertionError("not used")
 
         def stats(self) -> CacheStatsSnapshot:
@@ -359,7 +403,8 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def __init__(self):
             self.store = store
 
-        def get(self, _key: str):
+        def get(self, _key: str, namespace: str | None = None):
+            assert namespace is None
             raise RuntimeError("boom")
 
         def set(self, *_args, **_kwargs):
@@ -494,6 +539,25 @@ def test_main_configures_logging_from_validated_settings(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_grpc_servicer_rejects_invalid_namespace_metadata():
+    store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
+    )
+    service = GrpcCacheService(CacheApplicationService(store))
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-ns"), ("x-cache-namespace", "bad/ns")])
+    response = await service.Get(cache_pb2.CacheKey(key="k"), ctx)
+
+    assert response.found is False
+    assert ctx.code == grpc.StatusCode.INVALID_ARGUMENT
+    assert ctx.details == (
+        "Namespace must contain only letters, numbers, dots, dashes, or underscores"
+    )
+
+    store.stop()
+
+
+@pytest.mark.asyncio
 async def test_grpc_set_returns_specific_resource_exhausted_reasons():
     store = CacheStore(
         max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
@@ -503,20 +567,28 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
         def __init__(self):
             self.store = store
 
-        def get(self, _key: str):
+        def get(self, _key: str, namespace: str | None = None):
+            assert namespace is None
             raise AssertionError("not used")
 
-        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
+        def set(
+            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+        ) -> CacheSetStatus:
+            assert namespace is None
             return CacheSetStatus.VALUE_TOO_LARGE
 
-        def delete(self, _key: str) -> bool:
+        def delete(self, _key: str, namespace: str | None = None) -> bool:
+            assert namespace is None
             raise AssertionError("not used")
 
         def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
     class CapacityApp(TooLargeApp):
-        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
+        def set(
+            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+        ) -> CacheSetStatus:
+            assert namespace is None
             return CacheSetStatus.CAPACITY_EXHAUSTED
 
     too_large_ctx = _FakeContext(metadata=[("x-request-id", "rid-oversize")])

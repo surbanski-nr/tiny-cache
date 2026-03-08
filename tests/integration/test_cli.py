@@ -65,3 +65,31 @@ async def test_cli_show_request_id_prints_response_request_id(grpc_target, capsy
     )
     stderr = capsys.readouterr().err
     assert "x-request-id=rid-123" in stderr
+
+
+async def test_cli_namespace_isolates_keys(grpc_target, capsys):
+    assert (
+        await run(["--target", grpc_target, "--namespace", "team-a", "set", "shared", "alpha"])
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == "OK"
+
+    assert (
+        await run(["--target", grpc_target, "--namespace", "team-b", "set", "shared", "beta"])
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == "OK"
+
+    assert (
+        await run(["--target", grpc_target, "--namespace", "team-a", "get", "shared", "--format", "utf8"])
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == "alpha"
+
+    assert (
+        await run(["--target", grpc_target, "--namespace", "team-b", "get", "shared", "--format", "utf8"])
+        == 0
+    )
+    assert capsys.readouterr().out.strip() == "beta"
+
+    assert await run(["--target", grpc_target, "get", "shared"]) == 1

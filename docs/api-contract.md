@@ -110,6 +110,8 @@ The gRPC/HTTP APIs are the stable client contract. Cache eviction strategy and l
 
 Clients may send an `x-request-id` metadata header. The server propagates it into logs, returns it in response metadata, and includes it in `INTERNAL` error details.
 
+Clients may also send an `x-cache-namespace` metadata header to isolate keys per caller without changing the protobuf schema. Namespaces are trimmed, limited to 64 characters, and may contain only letters, numbers, `.`, `_`, and `-`. Blank namespaces fall back to the shared keyspace.
+
 ### TLS (Optional)
 
 When `CACHE_TLS_ENABLED=true`, the gRPC server listens with TLS using:

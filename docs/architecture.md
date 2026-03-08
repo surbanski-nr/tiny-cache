@@ -60,6 +60,7 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 - Validates input (non-empty key, max key length)
 - Offloads store operations to a thread via `asyncio.to_thread()` to avoid blocking the event loop on `threading.Lock`
 - Uses gRPC status codes as the primary error contract (response bodies are meaningful only on success paths)
+- Applies optional namespace isolation in the application layer by mapping `x-cache-namespace` metadata to prefixed storage keys before calling the backend port
 
 ### HTTP Health + Metrics Transport (`tiny_cache/transport/http/health_app.py`)
 

@@ -135,6 +135,53 @@ async def test_multiget_returns_ordered_results_and_item_errors(grpc_server):
     assert result.items[2].error == "Key cannot be empty"
 
 
+async def test_namespace_metadata_isolates_cache_keys(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
+    stub, _service = await grpc_server(cache_store)
+
+    team_a = (("x-cache-namespace", "team-a"),)
+    team_b = (("x-cache-namespace", "team-b"),)
+
+    response = await stub.Set(
+        cache_pb2.CacheItem(key="shared", value=b"alpha", ttl=0),
+        metadata=team_a,
+    )
+    assert response.status == cache_pb2.CacheStatus.OK
+
+    response = await stub.Set(
+        cache_pb2.CacheItem(key="shared", value=b"beta", ttl=0),
+        metadata=team_b,
+    )
+    assert response.status == cache_pb2.CacheStatus.OK
+
+    value = await stub.Get(cache_pb2.CacheKey(key="shared"), metadata=team_a)
+    assert value.found is True
+    assert value.value == b"alpha"
+
+    value = await stub.Get(cache_pb2.CacheKey(key="shared"), metadata=team_b)
+    assert value.found is True
+    assert value.value == b"beta"
+
+    shared = await stub.Get(cache_pb2.CacheKey(key="shared"))
+    assert shared.found is False
+
+    deleted = await stub.MultiDelete(
+        cache_pb2.MultiCacheKeyRequest(keys=["shared"]),
+        metadata=team_a,
+    )
+    assert deleted.items[0].status == cache_pb2.CacheStatus.OK
+
+    missing = await stub.Get(cache_pb2.CacheKey(key="shared"), metadata=team_a)
+    assert missing.found is False
+
+    preserved = await stub.Get(cache_pb2.CacheKey(key="shared"), metadata=team_b)
+    assert preserved.found is True
+    assert preserved.value == b"beta"
+
+
 async def test_multiset_and_multidelete_return_per_item_results(grpc_server):
     clock = ThreadSafeClock()
     cache_store = CacheStore(

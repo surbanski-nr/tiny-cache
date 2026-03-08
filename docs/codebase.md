@@ -22,6 +22,7 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 1. A client calls the gRPC service (`cache.CacheService`) defined in `cache.proto`.
 2. The gRPC adapter receives the request (`tiny_cache/transport/grpc/servicer.py`).
 3. The adapter calls the application service (`tiny_cache/application/service.py`) which uses a cache store port implementation (currently the in-memory store).
+   Optional gRPC `x-cache-namespace` metadata is converted there into an isolated storage key prefix so namespace handling stays out of the backend adapter.
 4. Responses are returned to gRPC clients; health/metrics are exposed via the HTTP server.
 
 ## Key Files
