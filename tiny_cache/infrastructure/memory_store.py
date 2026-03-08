@@ -95,7 +95,7 @@ class CacheStore:
     def _is_expired(self, entry: CacheEntry) -> bool:
         if entry.ttl is None:
             return False
-        return (self._clock() - entry.created_at) > entry.ttl
+        return (self._clock() - entry.created_at) >= entry.ttl
 
     def get(self, key: str) -> Optional[Any]:
         validate_key(key)

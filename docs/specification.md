@@ -104,6 +104,7 @@ Behavior:
 
 - Updates are handled as non-growth operations for item-count eviction (updating an existing key does not evict other keys just because the cache is at capacity).
 - Enforces per-entry size (`max_value_bytes`) and total memory (`max_memory_bytes`) with LRU eviction when possible.
+- In the current in-memory backend, TTL expiry happens when `elapsed >= ttl`.
 
 ### Delete
 

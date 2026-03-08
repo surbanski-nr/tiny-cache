@@ -170,6 +170,34 @@ class TestCacheStore:
         assert cache.misses == 1
         cache.stop()
 
+    def test_ttl_expires_exactly_at_boundary(self):
+        """Test ttl expiry happens when elapsed time reaches the ttl boundary."""
+
+        class FakeClock:
+            def __init__(self):
+                self.now = 0.0
+
+            def __call__(self):
+                return self.now
+
+            def advance(self, seconds: float):
+                self.now += seconds
+
+        clock = FakeClock()
+        cache = CacheStore(
+            max_items=10, max_memory_mb=1, cleanup_interval=10, clock=clock
+        )
+
+        assert cache.set("ttl-boundary", "value", ttl=1) is CacheSetStatus.OK
+        assert cache.get("ttl-boundary") == "value"
+
+        clock.advance(1.0)
+
+        assert cache.get("ttl-boundary") is None
+
+        cache.stop()
+
+
     def test_set_with_zero_ttl_is_treated_as_no_ttl(self):
         """Test setting a value with ttl=0 is treated as no TTL."""
         key = "zero_ttl_key"
