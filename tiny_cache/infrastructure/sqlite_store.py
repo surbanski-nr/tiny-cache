@@ -14,9 +14,6 @@ from tiny_cache.application.ports import (
 from tiny_cache.domain.validation import validate_key, validate_value
 from tiny_cache.infrastructure.memory_store_cleanup import ExpiredEntryCleaner
 from tiny_cache.infrastructure.memory_store_models import (
-    DEFAULT_CLEANUP_INTERVAL,
-    DEFAULT_MAX_ITEMS,
-    DEFAULT_MAX_MEMORY_MB,
     CacheEntry,
     CacheStoreLimits,
 )
@@ -188,7 +185,9 @@ class SqliteCacheStore:
             "SELECT key, value, ttl, created_at FROM cache_entries"
         ).fetchall()
         for row in rows:
-            entry = CacheEntry(bytes(row["value"]), row["ttl"], created_at=row["created_at"])
+            entry = CacheEntry(
+                bytes(row["value"]), row["ttl"], created_at=row["created_at"]
+            )
             if self._is_expired(entry):
                 self._remove_expired_entry_locked(str(row["key"]))
 
@@ -200,7 +199,9 @@ class SqliteCacheStore:
             return [
                 (
                     str(row["key"]),
-                    CacheEntry(bytes(row["value"]), row["ttl"], created_at=row["created_at"]),
+                    CacheEntry(
+                        bytes(row["value"]), row["ttl"], created_at=row["created_at"]
+                    ),
                 )
                 for row in rows
             ]

@@ -38,7 +38,7 @@ class CacheStatsSnapshot:
     max_value_bytes: int
     max_items: int
 
-    def to_dict(self) -> dict[str, int | float]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "size": self.size,
             "hits": self.hits,
@@ -82,3 +82,7 @@ class CacheStorePort(Protocol):
     def delete(self, key: str) -> bool: ...
 
     def stats(self) -> CacheStatsSnapshot: ...
+
+
+class CacheStoreLifecyclePort(CacheStorePort, Protocol):
+    def stop(self) -> None: ...

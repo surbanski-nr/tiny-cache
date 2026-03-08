@@ -7,6 +7,7 @@ import pytest_asyncio
 
 import cache_pb2
 import cache_pb2_grpc
+from tiny_cache.application.ports import CacheStoreLifecyclePort
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.infrastructure.sqlite_store import SqliteCacheStore
@@ -32,9 +33,11 @@ class ThreadSafeClock:
 
 @pytest_asyncio.fixture
 async def grpc_server():
-    instances: list[tuple[grpc.aio.Server, grpc.aio.Channel, object]] = []
+    instances: list[
+        tuple[grpc.aio.Server, grpc.aio.Channel, CacheStoreLifecyclePort]
+    ] = []
 
-    async def _start(cache_store: CacheStore):
+    async def _start(cache_store: CacheStoreLifecyclePort):
         cache_app = CacheApplicationService(cache_store)
         service = GrpcCacheService(cache_app)
         server = grpc.aio.server(interceptors=[RequestIdInterceptor()])
@@ -375,9 +378,7 @@ async def test_sqlite_backend_matches_grpc_contract(grpc_server, tmp_path):
     )
     assert response.status == cache_pb2.STORED
 
-    response = await stub.SetIfAbsent(
-        cache_pb2.CacheItem(key="k", value=b"v3", ttl=0)
-    )
+    response = await stub.SetIfAbsent(cache_pb2.CacheItem(key="k", value=b"v3", ttl=0))
     assert response.status == cache_pb2.EXISTS
 
     value = await stub.Get(cache_pb2.CacheKey(key="k"))

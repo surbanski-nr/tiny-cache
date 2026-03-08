@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tiny_cache.domain.validation import validate_key, validate_namespace, validate_value
+from tiny_cache.domain.validation import (
+    validate_key,
+    validate_namespace,
+    validate_value,
+)
 
 from .ports import (
     CacheConditionalSetStatus,
@@ -46,7 +50,9 @@ class CacheApplicationService:
     ) -> CacheConditionalSetStatus:
         validate_value(value)
         ttl = ttl_seconds if ttl_seconds > 0 else None
-        return self.store.set_if_absent(self._storage_key(key, namespace), value, ttl=ttl)
+        return self.store.set_if_absent(
+            self._storage_key(key, namespace), value, ttl=ttl
+        )
 
     def compare_and_set(
         self,

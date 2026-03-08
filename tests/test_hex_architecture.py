@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import AsyncIterator, Callable, Coroutine
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,7 +17,11 @@ from tiny_cache.application.ports import (
 )
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
-from tiny_cache.domain.validation import validate_key, validate_namespace, validate_value
+from tiny_cache.domain.validation import (
+    validate_key,
+    validate_namespace,
+    validate_value,
+)
 from tiny_cache.infrastructure.config import Settings
 from tiny_cache.infrastructure.logging import (
     JsonFormatter,
@@ -24,9 +29,9 @@ from tiny_cache.infrastructure.logging import (
     configure_logging,
 )
 from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.infrastructure.protobuf import ensure_generated_protobuf_modules
 from tiny_cache.infrastructure.sqlite_store import SqliteCacheStore
 from tiny_cache.infrastructure.store_factory import create_cache_store
-from tiny_cache.infrastructure.protobuf import ensure_generated_protobuf_modules
 from tiny_cache.infrastructure.tls import (
     add_grpc_listen_port,
     build_tls_server_credentials,
@@ -40,6 +45,22 @@ from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import HealthCheckHandler
 
 pytestmark = [pytest.mark.unit]
+
+
+UnaryUnaryHandler = Callable[
+    [object, grpc.ServicerContext], Coroutine[Any, Any, object]
+]
+UnaryStreamHandler = Callable[[object, grpc.ServicerContext], AsyncIterator[object]]
+
+
+def _require_unary_unary(handler: grpc.RpcMethodHandler) -> UnaryUnaryHandler:
+    assert handler.unary_unary is not None
+    return cast(UnaryUnaryHandler, handler.unary_unary)
+
+
+def _require_unary_stream(handler: grpc.RpcMethodHandler) -> UnaryStreamHandler:
+    assert handler.unary_stream is not None
+    return cast(UnaryStreamHandler, handler.unary_stream)
 
 
 def test_validate_key_rejects_non_string():
@@ -125,9 +146,9 @@ async def test_active_requests_interceptor_tracks_inflight_call():
     )
     assert counter.value == 0
 
-    assert wrapped.unary_unary is not None
+    unary_unary = _require_unary_unary(wrapped)
     task = asyncio.create_task(
-        wrapped.unary_unary(
+        unary_unary(
             None,
             cast(grpc.ServicerContext, object()),
         )
@@ -166,12 +187,12 @@ async def test_active_requests_interceptor_tracks_unary_stream_call():
         continuation, cast(grpc.HandlerCallDetails, Details())
     )
     assert counter.value == 0
-    assert wrapped.unary_stream is not None
+    unary_stream = _require_unary_stream(wrapped)
 
-    async def consume() -> list[str]:
+    async def consume() -> list[object]:
         return [
             item
-            async for item in wrapped.unary_stream(
+            async for item in unary_stream(
                 None,
                 cast(grpc.ServicerContext, object()),
             )
@@ -291,6 +312,48 @@ def test_tls_credentials_and_listen_port_branches():
     assert add_grpc_listen_port(server, "127.0.0.1:0", secure_settings) == 2345
 
 
+class _FakeCacheAppBase:
+    def __init__(self, store: CacheStore):
+        self.store = store
+
+    def get(self, _key: str, namespace: str | None = None) -> bytes | None:
+        raise AssertionError(f"get not used for {_key!r} in {namespace!r}")
+
+    def set(
+        self,
+        _key: str,
+        _value: bytes,
+        _ttl_seconds: int,
+        namespace: str | None = None,
+    ) -> CacheSetStatus:
+        raise AssertionError(f"set not used for {_key!r} in {namespace!r}")
+
+    def set_if_absent(
+        self,
+        _key: str,
+        _value: bytes,
+        _ttl_seconds: int,
+        namespace: str | None = None,
+    ) -> CacheConditionalSetStatus:
+        raise AssertionError(f"set_if_absent not used for {_key!r} in {namespace!r}")
+
+    def compare_and_set(
+        self,
+        _key: str,
+        _expected_value: bytes,
+        _value: bytes,
+        _ttl_seconds: int,
+        namespace: str | None = None,
+    ) -> CacheConditionalSetStatus:
+        raise AssertionError(f"compare_and_set not used for {_key!r} in {namespace!r}")
+
+    def delete(self, _key: str, namespace: str | None = None) -> bool:
+        raise AssertionError(f"delete not used for {_key!r} in {namespace!r}")
+
+    def stats(self) -> CacheStatsSnapshot:
+        raise AssertionError("stats not used")
+
+
 class _FakeContext:
     def __init__(
         self,
@@ -340,7 +403,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     with caplog.at_level(logging.DEBUG, logger="tiny_cache.transport.grpc.servicer"):
         service._log_request("GET", "k", "peer", 1.0, "HIT")
 
-    class BytesApp:
+    class BytesApp(_FakeCacheAppBase):
         def __init__(self):
             self.store = store
 
@@ -349,7 +412,11 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
             return b"hello"
 
         def set(
-            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+            self,
+            _key: str,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
         ) -> CacheSetStatus:
             assert namespace is None
             raise AssertionError("not used")
@@ -368,16 +435,20 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     assert value.found is True
     assert value.value == b"hello"
 
-    class ObjApp:
+    class ObjApp(_FakeCacheAppBase):
         def __init__(self):
             self.store = store
 
         def get(self, _key: str, namespace: str | None = None):
             assert namespace is None
-            return 123
+            return cast(bytes | None, 123)
 
         def set(
-            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+            self,
+            _key: str,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
         ) -> CacheSetStatus:
             assert namespace is None
             raise AssertionError("not used")
@@ -407,7 +478,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     assert ctx.code == grpc.StatusCode.INVALID_ARGUMENT
     assert ctx.details == "Key cannot be empty"
 
-    class BoomApp:
+    class BoomApp(_FakeCacheAppBase):
         def __init__(self):
             self.store = store
 
@@ -565,7 +636,9 @@ async def test_grpc_servicer_rejects_invalid_namespace_metadata():
     )
     service = GrpcCacheService(CacheApplicationService(store))
 
-    ctx = _FakeContext(metadata=[("x-request-id", "rid-ns"), ("x-cache-namespace", "bad/ns")])
+    ctx = _FakeContext(
+        metadata=[("x-request-id", "rid-ns"), ("x-cache-namespace", "bad/ns")]
+    )
     response = await service.Get(cache_pb2.CacheKey(key="k"), ctx)
 
     assert response.found is False
@@ -618,7 +691,11 @@ async def test_grpc_conditional_write_rpcs_cover_status_and_resource_paths():
             raise AssertionError("not used")
 
         def set_if_absent(
-            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+            self,
+            _key: str,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
         ) -> CacheConditionalSetStatus:
             assert namespace is None
             return CacheConditionalSetStatus.VALUE_TOO_LARGE
@@ -669,7 +746,7 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
         max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
     )
 
-    class TooLargeApp:
+    class TooLargeApp(_FakeCacheAppBase):
         def __init__(self):
             self.store = store
 
@@ -678,7 +755,11 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
             raise AssertionError("not used")
 
         def set(
-            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+            self,
+            _key: str,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
         ) -> CacheSetStatus:
             assert namespace is None
             return CacheSetStatus.VALUE_TOO_LARGE
@@ -692,7 +773,11 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
 
     class CapacityApp(TooLargeApp):
         def set(
-            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+            self,
+            _key: str,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
         ) -> CacheSetStatus:
             assert namespace is None
             return CacheSetStatus.CAPACITY_EXHAUSTED
@@ -806,11 +891,11 @@ async def test_request_id_interceptor_sets_context_and_metadata():
     wrapped = await interceptor.intercept_service(
         continuation, cast(grpc.HandlerCallDetails, Details())
     )
-    assert wrapped.unary_unary is not None
+    unary_unary = _require_unary_unary(wrapped)
 
     ctx = _FakeContext(metadata=[("x-request-id", "rid-123")])
     assert request_id_var.get() == "-"
-    response = await wrapped.unary_unary(None, cast(grpc.ServicerContext, ctx))
+    response = await unary_unary(None, cast(grpc.ServicerContext, ctx))
     assert response == "rid-123"
     assert ("x-request-id", "rid-123") in getattr(ctx, "initial_metadata", ())
     assert request_id_var.get() == "-"
@@ -834,14 +919,11 @@ async def test_request_id_interceptor_sets_context_for_unary_stream():
     wrapped = await interceptor.intercept_service(
         continuation, cast(grpc.HandlerCallDetails, Details())
     )
-    assert wrapped.unary_stream is not None
+    unary_stream = _require_unary_stream(wrapped)
 
     ctx = _FakeContext(metadata=[("x-request-id", "rid-stream")])
     assert request_id_var.get() == "-"
-    items = [
-        item
-        async for item in wrapped.unary_stream(None, cast(grpc.ServicerContext, ctx))
-    ]
+    items = [item async for item in unary_stream(None, cast(grpc.ServicerContext, ctx))]
     assert items == ["rid-stream"]
     assert ("x-request-id", "rid-stream") in getattr(ctx, "initial_metadata", ())
     assert request_id_var.get() == "-"
@@ -883,5 +965,6 @@ async def test_health_handler_liveness_error_path(monkeypatch):
     monkeypatch.setattr("tiny_cache.transport.http.health_app.time", FakeTime)
     response = await handler.liveness_check(object())  # type: ignore[arg-type]
     assert response.status == 503
+    assert response.text is not None
     payload = json.loads(response.text)
     assert payload["message"] == "Service unavailable"

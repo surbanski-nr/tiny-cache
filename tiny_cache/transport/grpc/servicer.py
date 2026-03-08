@@ -4,9 +4,10 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Iterable
 from contextvars import Token
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 from grpc import StatusCode
 
@@ -24,10 +25,10 @@ from tiny_cache.domain.validation import validate_namespace
 logger = logging.getLogger(__name__)
 
 VALUE_TOO_LARGE_MESSAGE = "Value exceeds maximum allowed cache entry size"
-CAPACITY_EXHAUSTED_MESSAGE = (
-    "Cache capacity exhausted and cannot accommodate new entry"
-)
+CAPACITY_EXHAUSTED_MESSAGE = "Cache capacity exhausted and cannot accommodate new entry"
 NAMESPACE_HEADER = "x-cache-namespace"
+
+Metadata = Iterable[tuple[str, str]]
 
 
 class CacheApp(Protocol):
@@ -69,6 +70,16 @@ class CacheApp(Protocol):
     def stats(self) -> CacheStatsSnapshot: ...
 
 
+class RpcContextLike(Protocol):
+    def peer(self) -> str: ...
+
+    def invocation_metadata(self) -> Metadata | None: ...
+
+    def set_code(self, code: StatusCode) -> None: ...
+
+    def set_details(self, details: str) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class RpcRequestState:
     request_id: str
@@ -92,7 +103,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         request_id = uuid.uuid4().hex
         return request_id, request_id_var.set(request_id)
 
-    def _begin_request(self, context: Any) -> RpcRequestState:
+    def _begin_request(self, context: RpcContextLike) -> RpcRequestState:
         request_id, token = self._ensure_request_id()
         return RpcRequestState(
             request_id=request_id,
@@ -105,7 +116,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         if state.token is not None:
             request_id_var.reset(state.token)
 
-    def _get_client_address(self, context: Any) -> str:
+    def _get_client_address(self, context: RpcContextLike) -> str:
         try:
             peer = context.peer()
             return peer if peer else "unknown"
@@ -113,11 +124,11 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             logger.debug("Unable to read client peer from context", exc_info=True)
             return "unknown"
 
-    def _namespace_from_context(self, context: Any) -> str | None:
+    def _namespace_from_context(self, context: RpcContextLike) -> str | None:
         try:
             for key, value in context.invocation_metadata() or ():
-                if isinstance(key, str) and key.lower() == NAMESPACE_HEADER and value:
-                    return validate_namespace(str(value))
+                if key.lower() == NAMESPACE_HEADER and value:
+                    return validate_namespace(value)
         except ValueError:
             raise
         except Exception:
@@ -148,7 +159,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
     def _handle_invalid_argument(
         self,
-        context: Any,
+        context: RpcContextLike,
         state: RpcRequestState,
         operation: str,
         key: str,
@@ -166,7 +177,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
     def _handle_internal_error(
         self,
-        context: Any,
+        context: RpcContextLike,
         state: RpcRequestState,
         operation: str,
         key: str,
@@ -195,7 +206,7 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
     def _conditional_status_details(
         self,
         status: CacheConditionalSetStatus,
-    ) -> tuple[str, int, str | None]:
+    ) -> tuple[str, cache_pb2.ConditionalCacheStatus, str | None]:
         if status is CacheConditionalSetStatus.STORED:
             return "STORED", cache_pb2.STORED, None
         if status is CacheConditionalSetStatus.EXISTS:
@@ -205,9 +216,17 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         if status is CacheConditionalSetStatus.MISMATCH:
             return "MISMATCH", cache_pb2.MISMATCH, None
         if status is CacheConditionalSetStatus.VALUE_TOO_LARGE:
-            return "VALUE_TOO_LARGE", cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED, VALUE_TOO_LARGE_MESSAGE
+            return (
+                "VALUE_TOO_LARGE",
+                cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,
+                VALUE_TOO_LARGE_MESSAGE,
+            )
         if status is CacheConditionalSetStatus.CAPACITY_EXHAUSTED:
-            return "CAPACITY_EXHAUSTED", cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED, CAPACITY_EXHAUSTED_MESSAGE
+            return (
+                "CAPACITY_EXHAUSTED",
+                cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,
+                CAPACITY_EXHAUSTED_MESSAGE,
+            )
         raise RuntimeError(f"Unsupported conditional cache status: {status!r}")
 
     def _build_multi_get_items(
@@ -532,7 +551,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 state.request_id,
                 namespace,
             )
-            ok_count = sum(1 for item in items if item.status == cache_pb2.CacheStatus.OK)
+            ok_count = sum(
+                1 for item in items if item.status == cache_pb2.CacheStatus.OK
+            )
             error_count = len(items) - ok_count
             self._log_request(
                 "MULTI_SET",
@@ -602,7 +623,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 state.request_id,
                 namespace,
             )
-            ok_count = sum(1 for item in items if item.status == cache_pb2.CacheStatus.OK)
+            ok_count = sum(
+                1 for item in items if item.status == cache_pb2.CacheStatus.OK
+            )
             error_count = len(items) - ok_count
             self._log_request(
                 "MULTI_DELETE",
@@ -638,7 +661,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         try:
             stats = await asyncio.to_thread(self._app.stats)
             result = f"size={stats.size} hits={stats.hits} misses={stats.misses}"
-            self._log_request("STATS", "", state.client_addr, state.duration_ms(), result)
+            self._log_request(
+                "STATS", "", state.client_addr, state.duration_ms(), result
+            )
             return cache_pb2.CacheStats(
                 size=stats.size,
                 hits=stats.hits,
