@@ -57,7 +57,7 @@ Methods:
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
   - Success: `CacheResponse(status=OK)`
-  - Capacity/limit failure: `RESOURCE_EXHAUSTED` (response message is not authoritative)
+  - Size-limit or capacity failure: `RESOURCE_EXHAUSTED` (details may distinguish oversize values from exhausted capacity; response message is not authoritative)
   - Unexpected errors: `INTERNAL` with generic details including a request id
 - `Delete`
   - Empty key: `INVALID_ARGUMENT`
@@ -74,7 +74,7 @@ The gRPC/HTTP APIs are the stable client contract. Cache eviction strategy and l
 
 - Eviction policy (LRU, LFU, TTL-only, etc.) is not part of the API contract.
 - TTL is expressed in seconds; once expired, entries should be treated as missing (`found=false`). The exact moment an entry disappears may vary by backend (lazy expiry, periodic cleanup, or backend-native TTL).
-- `RESOURCE_EXHAUSTED` indicates the backend could not store the entry under its current constraints (size limits, memory pressure, quotas). The details string is for diagnostics only.
+- `RESOURCE_EXHAUSTED` indicates the backend could not store the entry under its current constraints (for example, per-entry size limits or exhausted capacity). The details string is for diagnostics only.
 - `CacheStats` fields such as `memory_usage_bytes` are best-effort and may not be strictly comparable across backends.
 
 ### Request IDs

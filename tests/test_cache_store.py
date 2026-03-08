@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tiny_cache.application.ports import CacheSetStatus
 from tiny_cache.domain.constraints import MAX_KEY_LENGTH
 from tiny_cache.infrastructure.memory_store import CacheEntry, CacheStore
 
@@ -116,7 +117,7 @@ class TestCacheStore:
 
         # Test set
         result = self.cache.set(key, value)
-        assert result is True
+        assert result is CacheSetStatus.OK
 
         # Test get
         retrieved_value = self.cache.get(key)
@@ -154,7 +155,7 @@ class TestCacheStore:
         )
 
         result = cache.set(key, value, ttl=ttl)
-        assert result is True
+        assert result is CacheSetStatus.OK
 
         # Should be available immediately
         retrieved_value = cache.get(key)
@@ -175,7 +176,7 @@ class TestCacheStore:
         value = "zero_ttl_value"
 
         result = self.cache.set(key, value, ttl=0)
-        assert result is True
+        assert result is CacheSetStatus.OK
 
         with self.cache.lock:
             assert self.cache.store[key].ttl is None
@@ -188,7 +189,7 @@ class TestCacheStore:
         value = "negative_ttl_value"
 
         result = self.cache.set(key, value, ttl=-1)
-        assert result is True
+        assert result is CacheSetStatus.OK
 
         with self.cache.lock:
             assert self.cache.store[key].ttl is None
@@ -252,7 +253,7 @@ class TestCacheStore:
         too_large_value = "x" * (2 * 1024 * 1024)  # > 1MB
         result = cache.set("key", too_large_value)
 
-        assert result is False
+        assert result is CacheSetStatus.VALUE_TOO_LARGE
         assert cache.get("key") == "small"
         with cache.lock:
             assert cache.current_memory_bytes == sum(
@@ -274,7 +275,7 @@ class TestCacheStore:
         with patch.object(cache, "_evict_to_fit", return_value=False):
             result = cache.set("key1", "value1_updated")
 
-        assert result is False
+        assert result is CacheSetStatus.CAPACITY_EXHAUSTED
         assert cache.get("key1") == "value1"
         assert cache.get("key2") == "value2"
         with cache.lock:
@@ -289,7 +290,7 @@ class TestCacheStore:
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
         cache.max_items = 0
 
-        assert cache.set("key", "value") is False
+        assert cache.set("key", "value") is CacheSetStatus.CAPACITY_EXHAUSTED
 
         cache.stop()
 
@@ -359,8 +360,8 @@ class TestCacheStore:
 
         cache.max_memory_bytes = entry_size + 1
 
-        assert cache.set("key1", value) is True
-        assert cache.set("key2", value) is True  # Evicts key1
+        assert cache.set("key1", value) is CacheSetStatus.OK
+        assert cache.set("key2", value) is CacheSetStatus.OK  # Evicts key1
 
         assert cache.get("key1") is None
         assert cache.get("key2") == value
@@ -377,8 +378,8 @@ class TestCacheStore:
             max_items=10, max_memory_mb=10, cleanup_interval=10, max_value_bytes=100
         )
 
-        assert cache.set("small", "x") is True
-        assert cache.set("large", "x" * 1000) is False
+        assert cache.set("small", "x") is CacheSetStatus.OK
+        assert cache.set("large", "x" * 1000) is CacheSetStatus.VALUE_TOO_LARGE
         assert cache.get("large") is None
 
         cache.stop()

@@ -11,6 +11,7 @@ from grpc import StatusCode
 
 import cache_pb2
 import cache_pb2_grpc
+from tiny_cache.application.ports import CacheSetStatus
 from tiny_cache.application.request_context import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class CacheApp(Protocol):
 
     def get(self, key: str, /) -> Any | None: ...
 
-    def set(self, key: str, value: Any, ttl_seconds: int, /) -> bool: ...
+    def set(self, key: str, value: Any, ttl_seconds: int, /) -> CacheSetStatus: ...
 
     def delete(self, key: str, /) -> bool: ...
 
@@ -115,22 +116,35 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         client_addr = self._get_client_address(context)
 
         try:
-            success = await asyncio.to_thread(
+            set_status = await asyncio.to_thread(
                 self._app.set, request.key, request.value, request.ttl
             )
             duration_ms = (time.monotonic() - start_time) * 1000
 
-            if success:
+            if set_status is CacheSetStatus.OK:
                 ttl_info = f" ttl={request.ttl}s" if request.ttl > 0 else ""
                 self._log_request(
                     "SET", request.key, client_addr, duration_ms, f"OK{ttl_info}"
                 )
                 return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
 
-            self._log_request("SET", request.key, client_addr, duration_ms, "FULL")
-            context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-            context.set_details("Cache is full and cannot accommodate new entry")
-            return cache_pb2.CacheResponse()
+            if set_status is CacheSetStatus.VALUE_TOO_LARGE:
+                self._log_request(
+                    "SET", request.key, client_addr, duration_ms, "VALUE_TOO_LARGE"
+                )
+                context.set_code(StatusCode.RESOURCE_EXHAUSTED)
+                context.set_details("Value exceeds maximum allowed cache entry size")
+                return cache_pb2.CacheResponse()
+
+            if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
+                self._log_request(
+                    "SET", request.key, client_addr, duration_ms, "CAPACITY_EXHAUSTED"
+                )
+                context.set_code(StatusCode.RESOURCE_EXHAUSTED)
+                context.set_details("Cache capacity exhausted and cannot accommodate new entry")
+                return cache_pb2.CacheResponse()
+
+            raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
         except ValueError as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request(

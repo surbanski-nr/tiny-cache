@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Optional, Protocol
+
+
+class CacheSetStatus(str, Enum):
+    OK = "ok"
+    VALUE_TOO_LARGE = "value_too_large"
+    CAPACITY_EXHAUSTED = "capacity_exhausted"
 
 
 class CacheStorePort(Protocol):
@@ -10,7 +17,9 @@ class CacheStorePort(Protocol):
 
     def get(self, key: str) -> Optional[Any]: ...
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool: ...
+    def set(
+        self, key: str, value: Any, ttl: Optional[int] = None
+    ) -> CacheSetStatus: ...
 
     def delete(self, key: str) -> bool: ...
 

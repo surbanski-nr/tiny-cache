@@ -158,7 +158,7 @@ async def test_set_too_large_value_returns_resource_exhausted(grpc_server):
         await stub.Set(cache_pb2.CacheItem(key="big", value=b"x" * 1024, ttl=0))
 
     assert exc_info.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
-    assert "Cache is full" in (exc_info.value.details() or "")
+    assert "maximum allowed cache entry size" in (exc_info.value.details() or "")
 
 
 async def test_stats_reports_size_hits_misses(grpc_server):

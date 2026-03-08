@@ -8,6 +8,7 @@ import pytest
 
 import cache_pb2
 import tiny_cache.main as main_module
+from tiny_cache.application.ports import CacheSetStatus
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import validate_key
@@ -251,7 +252,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def get(self, _key: str):
             return "hello"
 
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> bool:
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
             raise AssertionError("not used")
 
         def delete(self, _key: str) -> bool:
@@ -274,7 +275,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def get(self, _key: str):
             return 123
 
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> bool:
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
             raise AssertionError("not used")
 
         def delete(self, _key: str) -> bool:
@@ -344,6 +345,47 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         assert "request_id=rid-7" in (ctx.details or "")
     finally:
         request_id_var.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_grpc_set_returns_specific_resource_exhausted_reasons():
+    store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False)
+
+    class TooLargeApp:
+        def __init__(self):
+            self.store = store
+
+        def get(self, _key: str):
+            raise AssertionError("not used")
+
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+            return CacheSetStatus.VALUE_TOO_LARGE
+
+        def delete(self, _key: str) -> bool:
+            raise AssertionError("not used")
+
+        def stats(self) -> dict[str, Any]:
+            raise AssertionError("not used")
+
+    class CapacityApp(TooLargeApp):
+        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+            return CacheSetStatus.CAPACITY_EXHAUSTED
+
+    too_large_ctx = _FakeContext(metadata=[("x-request-id", "rid-oversize")])
+    await GrpcCacheService(TooLargeApp()).Set(
+        cache_pb2.CacheItem(key="k", value=b"v", ttl=0), too_large_ctx
+    )
+    assert too_large_ctx.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert "maximum allowed cache entry size" in (too_large_ctx.details or "")
+
+    capacity_ctx = _FakeContext(metadata=[("x-request-id", "rid-capacity")])
+    await GrpcCacheService(CapacityApp()).Set(
+        cache_pb2.CacheItem(key="k", value=b"v", ttl=0), capacity_ctx
+    )
+    assert capacity_ctx.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert "capacity exhausted" in (capacity_ctx.details or "")
+
+    store.stop()
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from tiny_cache.domain.validation import validate_key
 
-from .ports import CacheStorePort
+from .ports import CacheSetStatus, CacheStorePort
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class CacheApplicationService:
         validate_key(key)
         return self.store.get(key)
 
-    def set(self, key: str, value: Any, ttl_seconds: int) -> bool:
+    def set(self, key: str, value: Any, ttl_seconds: int) -> CacheSetStatus:
         validate_key(key)
         ttl = ttl_seconds if ttl_seconds > 0 else None
         return self.store.set(key, value, ttl=ttl)

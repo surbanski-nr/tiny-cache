@@ -17,7 +17,7 @@ The following are intended to remain stable across backends:
 - TTL normalization: `ttl <= 0` means "no TTL".
 - `Get`: missing or expired keys return `found=false` (not an error).
 - `Delete`: idempotent success for missing keys.
-- `Set`: capacity/limit failures return `RESOURCE_EXHAUSTED`.
+- `Set`: size-limit or capacity failures return `RESOURCE_EXHAUSTED`; details may distinguish oversize values from exhausted capacity.
 - Request IDs: `x-request-id` is propagated into logs and error details.
 
 The following are backend-specific (the current in-memory backend behavior is described below):

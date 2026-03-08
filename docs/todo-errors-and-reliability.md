@@ -8,7 +8,7 @@ This list focuses on correctness, startup safety, contract clarity, and operatio
 
 - [x] Return `None` immediately when `continuation()` returns no handler in both gRPC interceptors (`tiny_cache/transport/grpc/interceptors.py`). The interceptors now pass through unknown or unimplemented RPCs safely.
 - [x] Fail fast if `add_grpc_listen_port()` returns `0` in `tiny_cache/main.py`. Startup now aborts before logging a successful service start when no socket is actually bound.
-- [ ] Split `Set` failure reasons into at least `value_too_large` and `capacity_exhausted` across `tiny_cache/infrastructure/memory_store.py` and `tiny_cache/transport/grpc/servicer.py`. Right now the gRPC error says the cache is full even when the real cause is `max_value_bytes`.
+- [x] Split `Set` failure reasons into `value_too_large` and `capacity_exhausted` across `tiny_cache/infrastructure/memory_store.py` and `tiny_cache/transport/grpc/servicer.py`. The backend now returns a specific set status and gRPC maps the two failure modes to clearer diagnostics.
 - [x] Standardize local environment setup on `.venv` and align the docs and test commands on `uv run`.
 
 ## Medium Priority

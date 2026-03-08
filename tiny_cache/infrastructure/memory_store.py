@@ -7,6 +7,7 @@ from collections import OrderedDict
 from threading import Event, Lock, Thread
 from typing import Any, Callable, Optional
 
+from tiny_cache.application.ports import CacheSetStatus
 from tiny_cache.domain.validation import validate_key
 
 DEFAULT_MAX_ITEMS = 1000
@@ -113,7 +114,9 @@ class CacheStore:
             self.hits += 1
             return entry.value
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    def set(
+        self, key: str, value: Any, ttl: Optional[int] = None
+    ) -> CacheSetStatus:
         validate_key(key)
         with self.lock:
             old_entry = self.store.pop(key, None)
@@ -126,25 +129,25 @@ class CacheStore:
                 if old_entry is not None:
                     self.store[key] = old_entry
                     self.current_memory_bytes += old_entry.size_bytes
-                return False
+                return CacheSetStatus.VALUE_TOO_LARGE
 
             if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
                 if not self._evict_to_fit(entry.size_bytes):
                     if old_entry is not None:
                         self.store[key] = old_entry
                         self.current_memory_bytes += old_entry.size_bytes
-                    return False
+                    return CacheSetStatus.CAPACITY_EXHAUSTED
 
             is_new_key = old_entry is None
             if is_new_key:
                 while len(self.store) >= self.max_items:
                     if not self._evict_lru():
-                        return False
+                        return CacheSetStatus.CAPACITY_EXHAUSTED
 
             self.store[key] = entry
             self.current_memory_bytes += entry.size_bytes
             self.store.move_to_end(key)
-            return True
+            return CacheSetStatus.OK
 
     def delete(self, key: str) -> bool:
         validate_key(key)
