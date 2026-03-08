@@ -502,3 +502,5 @@ async def test_health_handler_liveness_error_path(monkeypatch):
     monkeypatch.setattr("tiny_cache.transport.http.health_app.time", FakeTime)
     response = await handler.liveness_check(object())  # type: ignore[arg-type]
     assert response.status == 503
+    payload = json.loads(response.text)
+    assert payload["message"] == "Service unavailable"

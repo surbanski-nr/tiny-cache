@@ -126,12 +126,16 @@ async def test_health_endpoints_error_on_stats_exception():
                 body = await resp.text()
                 payload = json.loads(body)
                 assert payload["status"] == "error"
+                assert payload["message"] == "Service unavailable"
+                assert "boom" not in body
 
             async with session.get(f"http://127.0.0.1:{port}/metrics") as resp:
                 assert resp.status == 503
 
             async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
                 assert resp.status == 503
+                payload = await resp.json()
+                assert payload["message"] == "Service unavailable"
     finally:
         await runner.cleanup()
         cache_store.stop()

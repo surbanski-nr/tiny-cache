@@ -13,7 +13,7 @@ This list focuses on correctness, startup safety, contract clarity, and operatio
 
 ## Medium Priority
 
-- [ ] Make HTTP 503 responses generic and rely on `x-request-id` for debugging in `tiny_cache/transport/http/health_app.py` instead of returning raw exception messages to clients.
+- [x] Make HTTP 503 responses generic and rely on `x-request-id` for debugging in `tiny_cache/transport/http/health_app.py` instead of returning raw exception messages to clients.
 - [ ] Decide whether TTL expiry should happen at `elapsed >= ttl` or `elapsed > ttl` in `tiny_cache/infrastructure/memory_store.py`, document the rule, and add a boundary test for it.
 - [ ] Ensure `/stats` and `/metrics` exclude expired entries before reporting, or document clearly that statistics may remain stale until access or background cleanup runs.
 - [ ] Validate enumerated settings such as `CACHE_LOG_FORMAT` and `CACHE_LOG_LEVEL` in `tiny_cache/infrastructure/config.py` instead of silently accepting unexpected values.

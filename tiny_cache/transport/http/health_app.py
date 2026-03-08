@@ -13,6 +13,7 @@ from tiny_cache.application.request_context import request_id_var
 from tiny_cache.transport.active_requests import ActiveRequests
 
 logger = logging.getLogger(__name__)
+SERVICE_UNAVAILABLE_MESSAGE = "Service unavailable"
 
 
 @web.middleware
@@ -52,10 +53,10 @@ class HealthCheckHandler:
                 status=200,
                 content_type="application/json",
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Health check error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": str(exc)}),
+                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
                 status=503,
                 content_type="application/json",
             )
@@ -76,10 +77,10 @@ class HealthCheckHandler:
                 status=200,
                 content_type="application/json",
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Liveness check error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": str(exc)}),
+                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
                 status=503,
                 content_type="application/json",
             )
@@ -139,10 +140,10 @@ class HealthCheckHandler:
             return web.Response(
                 text=json.dumps(payload), status=200, content_type="application/json"
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Stats error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": str(exc)}),
+                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
                 status=503,
                 content_type="application/json",
             )
