@@ -9,7 +9,11 @@ import pytest
 import cache_pb2
 import tiny_cache.cli as cli_module
 import tiny_cache.main as main_module
-from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
+from tiny_cache.application.ports import (
+    CacheConditionalSetStatus,
+    CacheSetStatus,
+    CacheStatsSnapshot,
+)
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import validate_key, validate_namespace, validate_value
@@ -553,6 +557,92 @@ async def test_grpc_servicer_rejects_invalid_namespace_metadata():
     assert ctx.details == (
         "Namespace must contain only letters, numbers, dots, dashes, or underscores"
     )
+
+    store.stop()
+
+
+@pytest.mark.asyncio
+async def test_grpc_conditional_write_rpcs_cover_status_and_resource_paths():
+    store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
+    )
+    service = GrpcCacheService(CacheApplicationService(store))
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-sia")])
+    response = await service.SetIfAbsent(
+        cache_pb2.CacheItem(key="k", value=b"v1", ttl=0),
+        ctx,
+    )
+    assert response.status == cache_pb2.STORED
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-sia-exists")])
+    response = await service.SetIfAbsent(
+        cache_pb2.CacheItem(key="k", value=b"v2", ttl=0),
+        ctx,
+    )
+    assert response.status == cache_pb2.EXISTS
+
+    ctx = _FakeContext(metadata=[("x-request-id", "rid-cas")])
+    response = await service.CompareAndSet(
+        cache_pb2.CompareAndSetRequest(
+            key="k", expected_value=b"bad", value=b"v2", ttl=0
+        ),
+        ctx,
+    )
+    assert response.status == cache_pb2.MISMATCH
+
+    class ConditionalResourceApp:
+        def __init__(self):
+            self.store = store
+
+        def get(self, _key: str, namespace: str | None = None):
+            raise AssertionError("not used")
+
+        def set(self, *_args, **_kwargs):
+            raise AssertionError("not used")
+
+        def set_if_absent(
+            self, _key: str, _value: bytes, _ttl_seconds: int, namespace: str | None = None
+        ) -> CacheConditionalSetStatus:
+            assert namespace is None
+            return CacheConditionalSetStatus.VALUE_TOO_LARGE
+
+        def compare_and_set(
+            self,
+            _key: str,
+            _expected_value: bytes,
+            _value: bytes,
+            _ttl_seconds: int,
+            namespace: str | None = None,
+        ) -> CacheConditionalSetStatus:
+            assert namespace is None
+            return CacheConditionalSetStatus.CAPACITY_EXHAUSTED
+
+        def delete(self, *_args, **_kwargs):
+            raise AssertionError("not used")
+
+        def stats(self) -> CacheStatsSnapshot:
+            raise AssertionError("not used")
+
+    resource_service = GrpcCacheService(ConditionalResourceApp())
+
+    oversize_ctx = _FakeContext(metadata=[("x-request-id", "rid-sia-big")])
+    await resource_service.SetIfAbsent(
+        cache_pb2.CacheItem(key="k", value=b"v", ttl=0),
+        oversize_ctx,
+    )
+    assert oversize_ctx.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert "maximum allowed cache entry size" in (oversize_ctx.details or "")
+
+    capacity_ctx = _FakeContext(metadata=[("x-request-id", "rid-cas-cap")])
+    await resource_service.CompareAndSet(
+        cache_pb2.CompareAndSetRequest(
+            key="k", expected_value=b"v", value=b"v2", ttl=0
+        ),
+        capacity_ctx,
+    )
+    assert capacity_ctx.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert "capacity exhausted" in (capacity_ctx.details or "")
 
     store.stop()
 

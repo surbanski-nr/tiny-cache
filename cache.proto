@@ -6,6 +6,8 @@ service CacheService {
   rpc Get (CacheKey) returns (CacheValue);
   rpc MultiGet (MultiCacheKeyRequest) returns (MultiCacheValueResponse);
   rpc Set (CacheItem) returns (CacheResponse);
+  rpc SetIfAbsent (CacheItem) returns (ConditionalCacheResponse);
+  rpc CompareAndSet (CompareAndSetRequest) returns (ConditionalCacheResponse);
   rpc MultiSet (MultiCacheItemRequest) returns (MultiCacheResponse);
   rpc Delete (CacheKey) returns (CacheResponse);
   rpc MultiDelete (MultiCacheKeyRequest) returns (MultiCacheResponse);
@@ -16,6 +18,14 @@ enum CacheStatus {
   CACHE_STATUS_UNSPECIFIED = 0;
   OK = 1;
   ERROR = 2;
+}
+
+enum ConditionalCacheStatus {
+  CONDITIONAL_CACHE_STATUS_UNSPECIFIED = 0;
+  STORED = 1;
+  EXISTS = 2;
+  NOT_FOUND = 3;
+  MISMATCH = 4;
 }
 
 message CacheKey {
@@ -30,6 +40,13 @@ message CacheItem {
   string key = 1;
   bytes value = 2;
   int32 ttl = 3;
+}
+
+message CompareAndSetRequest {
+  string key = 1;
+  bytes expected_value = 2;
+  bytes value = 3;
+  int32 ttl = 4;
 }
 
 message MultiCacheItemRequest {
@@ -54,6 +71,10 @@ message MultiCacheValueResponse {
 
 message CacheResponse {
   CacheStatus status = 1;
+}
+
+message ConditionalCacheResponse {
+  ConditionalCacheStatus status = 1;
 }
 
 message CacheOperationResult {

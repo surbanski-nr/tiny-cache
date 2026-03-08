@@ -107,6 +107,12 @@ Behavior:
 - Enforces per-entry size (`max_value_bytes`) and total memory (`max_memory_bytes`) with LRU eviction when possible.
 - In the current in-memory backend, TTL expiry happens when `elapsed >= ttl`.
 
+### Conditional Writes
+
+- `SetIfAbsent` stores the value only when the current key is missing or expired; a live existing key returns `EXISTS`.
+- `CompareAndSet` stores the new value only when the current live value matches `expected_value`; missing or expired keys return `NOT_FOUND`, and mismatched live values return `MISMATCH`.
+- Both conditional writes reuse the same size and capacity checks as `Set`, returning resource exhaustion when the backend cannot admit the new value.
+
 ### Delete
 
 - gRPC `Delete` is idempotent and returns `CacheStatus.OK` for both existing and missing keys.
@@ -148,7 +154,7 @@ The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cle
 ### gRPC API
 
 - Implemented via `grpc.aio`.
-- Unary RPCs for `Get`, `Set`, `Delete`, `Stats`, plus batch RPCs `MultiGet`, `MultiSet`, and `MultiDelete`.
+- Unary RPCs for `Get`, `Set`, `SetIfAbsent`, `CompareAndSet`, `Delete`, `Stats`, plus batch RPCs `MultiGet`, `MultiSet`, and `MultiDelete`.
 - Standard gRPC health service (`grpc.health.v1.Health`) is also served.
 - Request IDs:
   - Accepted from `x-request-id` request metadata when provided

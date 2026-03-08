@@ -6,7 +6,11 @@ from collections import OrderedDict
 from threading import Event, Lock, Thread
 from typing import Callable
 
-from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
+from tiny_cache.application.ports import (
+    CacheConditionalSetStatus,
+    CacheSetStatus,
+    CacheStatsSnapshot,
+)
 from tiny_cache.domain.validation import validate_key, validate_value
 from tiny_cache.infrastructure.memory_store_cleanup import ExpiredEntryCleaner
 from tiny_cache.infrastructure.memory_store_models import (
@@ -88,6 +92,56 @@ class CacheStore:
             return False
         return (self._clock() - entry.created_at) >= entry.ttl
 
+    def _store_value_locked(
+        self,
+        key: str,
+        value: bytes,
+        ttl: int | None,
+        old_entry: CacheEntry | None,
+    ) -> CacheSetStatus:
+        if old_entry is not None:
+            self.current_memory_bytes -= old_entry.size_bytes
+
+        entry = CacheEntry(value, ttl, created_at=self._clock())
+
+        if entry.size_bytes > self.max_value_bytes:
+            if old_entry is not None:
+                self.store[key] = old_entry
+                self.current_memory_bytes += old_entry.size_bytes
+            self.rejected_oversize += 1
+            return CacheSetStatus.VALUE_TOO_LARGE
+
+        if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
+            if not self._evict_to_fit(entry.size_bytes):
+                if old_entry is not None:
+                    self.store[key] = old_entry
+                    self.current_memory_bytes += old_entry.size_bytes
+                self.rejected_capacity += 1
+                return CacheSetStatus.CAPACITY_EXHAUSTED
+
+        is_new_key = old_entry is None
+        if is_new_key:
+            while len(self.store) >= self.max_items:
+                if not self._evict_lru():
+                    self.rejected_capacity += 1
+                    return CacheSetStatus.CAPACITY_EXHAUSTED
+
+        self.store[key] = entry
+        self.current_memory_bytes += entry.size_bytes
+        self.store.move_to_end(key)
+        return CacheSetStatus.OK
+
+    def _conditional_status_from_set(
+        self, set_status: CacheSetStatus
+    ) -> CacheConditionalSetStatus:
+        if set_status is CacheSetStatus.OK:
+            return CacheConditionalSetStatus.STORED
+        if set_status is CacheSetStatus.VALUE_TOO_LARGE:
+            return CacheConditionalSetStatus.VALUE_TOO_LARGE
+        if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
+            return CacheConditionalSetStatus.CAPACITY_EXHAUSTED
+        raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
+
     def get(self, key: str) -> bytes | None:
         validate_key(key)
         with self.lock:
@@ -110,37 +164,48 @@ class CacheStore:
         validate_value(value)
         with self.lock:
             old_entry = self.store.pop(key, None)
-            if old_entry is not None:
-                self.current_memory_bytes -= old_entry.size_bytes
+            return self._store_value_locked(key, value, ttl, old_entry)
 
-            entry = CacheEntry(value, ttl, created_at=self._clock())
+    def set_if_absent(
+        self, key: str, value: bytes, ttl: int | None = None
+    ) -> CacheConditionalSetStatus:
+        validate_key(key)
+        validate_value(value)
+        with self.lock:
+            existing_entry = self.store.get(key)
+            if existing_entry is not None:
+                if self._is_expired(existing_entry):
+                    self._remove_expired_entry(key)
+                else:
+                    return CacheConditionalSetStatus.EXISTS
+            return self._conditional_status_from_set(
+                self._store_value_locked(key, value, ttl, None)
+            )
 
-            if entry.size_bytes > self.max_value_bytes:
-                if old_entry is not None:
-                    self.store[key] = old_entry
-                    self.current_memory_bytes += old_entry.size_bytes
-                self.rejected_oversize += 1
-                return CacheSetStatus.VALUE_TOO_LARGE
+    def compare_and_set(
+        self,
+        key: str,
+        expected_value: bytes,
+        value: bytes,
+        ttl: int | None = None,
+    ) -> CacheConditionalSetStatus:
+        validate_key(key)
+        validate_value(expected_value)
+        validate_value(value)
+        with self.lock:
+            existing_entry = self.store.get(key)
+            if existing_entry is None:
+                return CacheConditionalSetStatus.NOT_FOUND
+            if self._is_expired(existing_entry):
+                self._remove_expired_entry(key)
+                return CacheConditionalSetStatus.NOT_FOUND
+            if existing_entry.value != expected_value:
+                return CacheConditionalSetStatus.MISMATCH
 
-            if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
-                if not self._evict_to_fit(entry.size_bytes):
-                    if old_entry is not None:
-                        self.store[key] = old_entry
-                        self.current_memory_bytes += old_entry.size_bytes
-                    self.rejected_capacity += 1
-                    return CacheSetStatus.CAPACITY_EXHAUSTED
-
-            is_new_key = old_entry is None
-            if is_new_key:
-                while len(self.store) >= self.max_items:
-                    if not self._evict_lru():
-                        self.rejected_capacity += 1
-                        return CacheSetStatus.CAPACITY_EXHAUSTED
-
-            self.store[key] = entry
-            self.current_memory_bytes += entry.size_bytes
-            self.store.move_to_end(key)
-            return CacheSetStatus.OK
+            old_entry = self.store.pop(key)
+            return self._conditional_status_from_set(
+                self._store_value_locked(key, value, ttl, old_entry)
+            )
 
     def delete(self, key: str) -> bool:
         validate_key(key)

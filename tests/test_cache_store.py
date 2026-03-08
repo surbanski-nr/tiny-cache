@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tiny_cache.application.ports import CacheSetStatus
+from tiny_cache.application.ports import CacheConditionalSetStatus, CacheSetStatus
 from tiny_cache.domain.constraints import MAX_KEY_LENGTH
 from tiny_cache.infrastructure.memory_store import CacheEntry, CacheStore
 
@@ -327,6 +327,72 @@ class TestCacheStore:
                 e.size_bytes for e in cache.store.values()
             )
 
+        cache.stop()
+
+    def test_set_if_absent_stores_only_when_key_is_missing(self):
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+
+        assert (
+            cache.set_if_absent("key", b"value1")
+            is CacheConditionalSetStatus.STORED
+        )
+        assert cache.get("key") == b"value1"
+
+        assert (
+            cache.set_if_absent("key", b"value2")
+            is CacheConditionalSetStatus.EXISTS
+        )
+        assert cache.get("key") == b"value1"
+
+        cache.stop()
+
+    def test_compare_and_set_updates_only_on_expected_value_match(self):
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+
+        assert (
+            cache.compare_and_set("missing", b"old", b"new")
+            is CacheConditionalSetStatus.NOT_FOUND
+        )
+
+        cache.set("key", b"value1")
+
+        assert (
+            cache.compare_and_set("key", b"wrong", b"value2")
+            is CacheConditionalSetStatus.MISMATCH
+        )
+        assert cache.get("key") == b"value1"
+
+        assert (
+            cache.compare_and_set("key", b"value1", b"value2")
+            is CacheConditionalSetStatus.STORED
+        )
+        assert cache.get("key") == b"value2"
+
+        cache.stop()
+
+    def test_conditional_writes_return_capacity_and_size_failures(self):
+        cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+        cache.set("key1", b"value1")
+        cache.set("key2", b"value2")
+        cache.max_value_bytes = 40
+
+        assert (
+            cache.set_if_absent("too_big", b"x" * 128)
+            is CacheConditionalSetStatus.VALUE_TOO_LARGE
+        )
+
+        size_value2 = sys.getsizeof(b"value2")
+        size_new = sys.getsizeof(b"value1_updated")
+        cache.max_memory_bytes = size_value2 + size_new - 1
+        cache.max_value_bytes = 100
+
+        with patch.object(cache, "_evict_to_fit", return_value=False):
+            assert (
+                cache.compare_and_set("key1", b"value1", b"value1_updated")
+                is CacheConditionalSetStatus.CAPACITY_EXHAUSTED
+            )
+
+        assert cache.get("key1") == b"value1"
         cache.stop()
 
     def test_set_returns_false_when_max_items_is_zero(self):

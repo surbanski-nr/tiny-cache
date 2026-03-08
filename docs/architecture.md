@@ -4,7 +4,7 @@
 
 tiny-cache is a sidecar-friendly cache service that exposes:
 
-- A gRPC API for cache operations (`Get`, `Set`, `Delete`, `Stats`)
+- A gRPC API for cache operations (`Get`, `Set`, `SetIfAbsent`, `CompareAndSet`, `Delete`, `Stats`)
 - A small HTTP server for health probes and metrics (`/health`, `/ready`, `/live`, `/metrics`)
 - The standard gRPC health checking service (`grpc.health.v1.Health`)
 

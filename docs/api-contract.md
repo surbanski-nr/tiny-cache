@@ -13,6 +13,8 @@ Methods:
 - `Get(CacheKey) -> CacheValue`
 - `MultiGet(MultiCacheKeyRequest) -> MultiCacheValueResponse`
 - `Set(CacheItem) -> CacheResponse`
+- `SetIfAbsent(CacheItem) -> ConditionalCacheResponse`
+- `CompareAndSet(CompareAndSetRequest) -> ConditionalCacheResponse`
 - `MultiSet(MultiCacheItemRequest) -> MultiCacheResponse`
 - `Delete(CacheKey) -> CacheResponse`
 - `MultiDelete(MultiCacheKeyRequest) -> MultiCacheResponse`
@@ -24,6 +26,11 @@ Methods:
   - `key: string`
 - `CacheItem`
   - `key: string`
+  - `value: bytes`
+  - `ttl: int32` (seconds; `<= 0` means "no TTL")
+- `CompareAndSetRequest`
+  - `key: string`
+  - `expected_value: bytes`
   - `value: bytes`
   - `ttl: int32` (seconds; `<= 0` means "no TTL")
 - `CacheValue`
@@ -38,6 +45,8 @@ Methods:
   - `items: repeated CacheLookup`
 - `CacheResponse`
   - `status: CacheStatus`
+- `ConditionalCacheResponse`
+  - `status: ConditionalCacheStatus`
 - `CacheOperationResult`
   - `key: string`
   - `status: CacheStatus`
@@ -61,6 +70,12 @@ Methods:
   - `CACHE_STATUS_UNSPECIFIED`
   - `OK`
   - `ERROR`
+- `ConditionalCacheStatus`
+  - `CONDITIONAL_CACHE_STATUS_UNSPECIFIED`
+  - `STORED`
+  - `EXISTS`
+  - `NOT_FOUND`
+  - `MISMATCH`
 
 ### Status Codes and Semantics
 
@@ -80,6 +95,19 @@ Methods:
   - Success: `CacheResponse(status=OK)`
   - Size-limit or capacity failure: `RESOURCE_EXHAUSTED` (details may distinguish oversize values from exhausted capacity; response message is not authoritative)
   - Unexpected errors: `INTERNAL` with generic details including a request id
+- `SetIfAbsent`
+  - Empty key: `INVALID_ARGUMENT`
+  - Key too long (>256): `INVALID_ARGUMENT`
+  - Missing/expired key stored successfully: `ConditionalCacheResponse(status=STORED)`
+  - Existing live key: `ConditionalCacheResponse(status=EXISTS)`
+  - Size-limit or capacity failure: `RESOURCE_EXHAUSTED`
+- `CompareAndSet`
+  - Empty key: `INVALID_ARGUMENT`
+  - Key too long (>256): `INVALID_ARGUMENT`
+  - Missing/expired key: `ConditionalCacheResponse(status=NOT_FOUND)`
+  - Existing key with different current value: `ConditionalCacheResponse(status=MISMATCH)`
+  - Matching current value stored successfully: `ConditionalCacheResponse(status=STORED)`
+  - Size-limit or capacity failure: `RESOURCE_EXHAUSTED`
 - `MultiSet`
   - Success: always returns `MultiCacheResponse`
   - Results preserve request order

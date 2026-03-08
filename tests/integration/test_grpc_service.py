@@ -182,6 +182,49 @@ async def test_namespace_metadata_isolates_cache_keys(grpc_server):
     assert preserved.value == b"beta"
 
 
+async def test_conditional_write_rpcs_return_expected_statuses(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
+    stub, _service = await grpc_server(cache_store)
+
+    response = await stub.SetIfAbsent(
+        cache_pb2.CacheItem(key="key", value=b"value1", ttl=0)
+    )
+    assert response.status == cache_pb2.STORED
+
+    response = await stub.SetIfAbsent(
+        cache_pb2.CacheItem(key="key", value=b"value2", ttl=0)
+    )
+    assert response.status == cache_pb2.EXISTS
+
+    response = await stub.CompareAndSet(
+        cache_pb2.CompareAndSetRequest(
+            key="missing", expected_value=b"value1", value=b"value2", ttl=0
+        )
+    )
+    assert response.status == cache_pb2.NOT_FOUND
+
+    response = await stub.CompareAndSet(
+        cache_pb2.CompareAndSetRequest(
+            key="key", expected_value=b"wrong", value=b"value2", ttl=0
+        )
+    )
+    assert response.status == cache_pb2.MISMATCH
+
+    response = await stub.CompareAndSet(
+        cache_pb2.CompareAndSetRequest(
+            key="key", expected_value=b"value1", value=b"value2", ttl=0
+        )
+    )
+    assert response.status == cache_pb2.STORED
+
+    value = await stub.Get(cache_pb2.CacheKey(key="key"))
+    assert value.found is True
+    assert value.value == b"value2"
+
+
 async def test_multiset_and_multidelete_return_per_item_results(grpc_server):
     clock = ThreadSafeClock()
     cache_store = CacheStore(

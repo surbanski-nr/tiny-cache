@@ -11,6 +11,15 @@ class CacheSetStatus(str, Enum):
     CAPACITY_EXHAUSTED = "capacity_exhausted"
 
 
+class CacheConditionalSetStatus(str, Enum):
+    STORED = "stored"
+    EXISTS = "exists"
+    NOT_FOUND = "not_found"
+    MISMATCH = "mismatch"
+    VALUE_TOO_LARGE = "value_too_large"
+    CAPACITY_EXHAUSTED = "capacity_exhausted"
+
+
 @dataclass(frozen=True, slots=True)
 class CacheStatsSnapshot:
     size: int
@@ -57,6 +66,18 @@ class CacheStorePort(Protocol):
     def get(self, key: str) -> bytes | None: ...
 
     def set(self, key: str, value: bytes, ttl: int | None = None) -> CacheSetStatus: ...
+
+    def set_if_absent(
+        self, key: str, value: bytes, ttl: int | None = None
+    ) -> CacheConditionalSetStatus: ...
+
+    def compare_and_set(
+        self,
+        key: str,
+        expected_value: bytes,
+        value: bytes,
+        ttl: int | None = None,
+    ) -> CacheConditionalSetStatus: ...
 
     def delete(self, key: str) -> bool: ...
 
