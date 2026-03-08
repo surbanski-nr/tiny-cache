@@ -1,0 +1,15 @@
+name: tiny-cache-test-deps
+
+services:
+  cache-service:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      - "${CACHE_TEST_PORT_HOST:-50061}:${CACHE_PORT:-50051}"
+      - "${CACHE_TEST_HEALTH_PORT_HOST:-58081}:${CACHE_HEALTH_PORT:-8080}"
+    environment:
+      - CACHE_LOG_LEVEL=${CACHE_LOG_LEVEL:-INFO}
+      - CACHE_PORT=${CACHE_PORT:-50051}
+      - CACHE_HEALTH_HOST=${CACHE_HEALTH_HOST:-0.0.0.0}
+      - CACHE_HEALTH_PORT=${CACHE_HEALTH_PORT:-8080}
