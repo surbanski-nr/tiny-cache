@@ -1,10 +1,10 @@
 import json
-from typing import Any
 
 import aiohttp
 import pytest
 from aiohttp import web
 
+from tiny_cache.application.ports import CacheStatsSnapshot
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.transport.active_requests import ActiveRequests
@@ -156,7 +156,7 @@ async def test_stats_and_metrics_exclude_expired_entries():
 
 async def test_health_endpoints_error_on_stats_exception():
     class BrokenApp:
-        def stats(self) -> dict[str, Any]:
+        def stats(self) -> CacheStatsSnapshot:
             raise RuntimeError("boom")
 
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)

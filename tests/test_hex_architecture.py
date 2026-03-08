@@ -9,7 +9,7 @@ import pytest
 import cache_pb2
 import tiny_cache.cli as cli_module
 import tiny_cache.main as main_module
-from tiny_cache.application.ports import CacheSetStatus
+from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import validate_key
@@ -260,7 +260,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def delete(self, _key: str) -> bool:
             raise AssertionError("not used")
 
-        def stats(self) -> dict[str, Any]:
+        def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
     value = await GrpcCacheService(StringApp()).Get(
@@ -283,7 +283,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def delete(self, _key: str) -> bool:
             raise AssertionError("not used")
 
-        def stats(self) -> dict[str, Any]:
+        def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
     value = await GrpcCacheService(ObjApp()).Get(
@@ -311,7 +311,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def delete(self, *_args, **_kwargs):
             raise RuntimeError("boom")
 
-        def stats(self):
+        def stats(self) -> CacheStatsSnapshot:
             raise RuntimeError("boom")
 
     boom_service = GrpcCacheService(BoomApp())
@@ -377,7 +377,9 @@ def test_main_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
         raise RuntimeError("missing generated protobuf")
 
     monkeypatch.setattr(main_module, "ensure_generated_protobuf_modules", raise_missing)
-    monkeypatch.setattr(main_module, "configure_logging", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        main_module, "configure_logging", lambda *_args, **_kwargs: None
+    )
 
     with pytest.raises(RuntimeError, match="missing generated protobuf"):
         main_module.main()
@@ -385,7 +387,9 @@ def test_main_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_grpc_set_returns_specific_resource_exhausted_reasons():
-    store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False)
+    store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, start_cleaner=False
+    )
 
     class TooLargeApp:
         def __init__(self):
@@ -400,7 +404,7 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
         def delete(self, _key: str) -> bool:
             raise AssertionError("not used")
 
-        def stats(self) -> dict[str, Any]:
+        def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
     class CapacityApp(TooLargeApp):
@@ -449,6 +453,7 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(monkeypatch):
 
     monkeypatch.setattr(main_module, "CacheStore", lambda **kwargs: fake_store)
     monkeypatch.setattr(main_module, "GrpcCacheService", lambda app: object())
+
     class FakeCachePb2Grpc:
         @staticmethod
         def add_CacheServiceServicer_to_server(servicer, server) -> None:
@@ -460,7 +465,9 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(monkeypatch):
         lambda: (object(), FakeCachePb2Grpc()),
     )
     monkeypatch.setattr(main_module, "add_grpc_health_service", lambda server: object())
-    monkeypatch.setattr(main_module, "add_grpc_listen_port", lambda server, addr, settings: 0)
+    monkeypatch.setattr(
+        main_module, "add_grpc_listen_port", lambda server, addr, settings: 0
+    )
     monkeypatch.setattr(
         main_module.grpc.aio,
         "server",
@@ -526,8 +533,18 @@ async def test_request_id_interceptor_sets_context_and_metadata():
 @pytest.mark.asyncio
 async def test_health_handler_liveness_error_path(monkeypatch):
     class App:
-        def stats(self) -> dict:
-            return {}
+        def stats(self) -> CacheStatsSnapshot:
+            return CacheStatsSnapshot(
+                size=0,
+                hits=0,
+                misses=0,
+                evictions=0,
+                hit_rate=0.0,
+                memory_usage_bytes=0,
+                memory_usage_mb=0.0,
+                max_memory_mb=0.0,
+                max_items=0,
+            )
 
     handler = HealthCheckHandler(App(), ActiveRequests())
 

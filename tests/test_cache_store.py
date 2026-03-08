@@ -71,7 +71,6 @@ class TestCacheStore:
             with pytest.raises(ValueError, match="CACHE_LOG_LEVEL must be one of"):
                 load_settings()
 
-
     def test_get_env_bool_validation(self):
         """Test bool env parsing helper provides clear errors."""
         from tiny_cache.infrastructure.config import get_env_bool
@@ -210,7 +209,6 @@ class TestCacheStore:
 
         cache.stop()
 
-
     def test_set_with_zero_ttl_is_treated_as_no_ttl(self):
         """Test setting a value with ttl=0 is treated as no TTL."""
         key = "zero_ttl_key"
@@ -253,7 +251,7 @@ class TestCacheStore:
 
         # Should still be one item in cache
         stats = self.cache.stats()
-        assert stats["size"] == 1
+        assert stats.size == 1
 
     def test_update_existing_key_at_capacity_does_not_evict_or_corrupt_memory(self):
         """Test updating a key at capacity does not evict other keys or break memory tracking."""
@@ -264,8 +262,8 @@ class TestCacheStore:
         cache.set("key3", "value3")
 
         stats_before = cache.stats()
-        assert stats_before["size"] == 3
-        assert stats_before["evictions"] == 0
+        assert stats_before.size == 3
+        assert stats_before.evictions == 0
         with cache.lock:
             assert cache.current_memory_bytes == sum(
                 e.size_bytes for e in cache.store.values()
@@ -274,8 +272,8 @@ class TestCacheStore:
         cache.set("key1", "value1_updated")
 
         stats_after = cache.stats()
-        assert stats_after["size"] == 3
-        assert stats_after["evictions"] == 0
+        assert stats_after.size == 3
+        assert stats_after.evictions == 0
         assert cache.get("key1") == "value1_updated"
         assert cache.get("key2") == "value2"
         assert cache.get("key3") == "value3"
@@ -388,8 +386,8 @@ class TestCacheStore:
         assert cache.get("key4") == "value4"  # Should exist
 
         stats = cache.stats()
-        assert stats["size"] == 3
-        assert stats["evictions"] == 1
+        assert stats.size == 3
+        assert stats.evictions == 1
 
         cache.stop()
 
@@ -408,8 +406,8 @@ class TestCacheStore:
         assert cache.get("key2") == value
 
         stats = cache.stats()
-        assert stats["size"] == 1
-        assert stats["evictions"] == 1
+        assert stats.size == 1
+        assert stats.evictions == 1
 
         cache.stop()
 
@@ -452,12 +450,11 @@ class TestCacheStore:
 
         stats = cache.stats()
 
-        assert stats["size"] == 0
-        assert stats["memory_usage_bytes"] == 0
+        assert stats.size == 0
+        assert stats.memory_usage_bytes == 0
         assert cache.get("expiring") is None
 
         cache.stop()
-
 
     def test_clear_cache(self):
         """Test clearing the entire cache."""
@@ -467,15 +464,15 @@ class TestCacheStore:
         self.cache.set("key3", "value3")
 
         stats_before = self.cache.stats()
-        assert stats_before["size"] == 3
+        assert stats_before.size == 3
 
         # Clear cache
         self.cache.clear()
 
         # Verify cache is empty
         stats_after = self.cache.stats()
-        assert stats_after["size"] == 0
-        assert stats_after["memory_usage_bytes"] == 0
+        assert stats_after.size == 0
+        assert stats_after.memory_usage_bytes == 0
 
         # Verify items are gone
         assert self.cache.get("key1") is None
@@ -493,18 +490,18 @@ class TestCacheStore:
         cache.set("key3", "value3")  # Evicts LRU key1
 
         stats_before = cache.stats()
-        assert stats_before["hits"] == 1
-        assert stats_before["misses"] == 1
-        assert stats_before["evictions"] == 1
+        assert stats_before.hits == 1
+        assert stats_before.misses == 1
+        assert stats_before.evictions == 1
 
         cache.clear()
 
         stats_after = cache.stats()
-        assert stats_after["size"] == 0
-        assert stats_after["hits"] == 0
-        assert stats_after["misses"] == 0
-        assert stats_after["evictions"] == 0
-        assert stats_after["memory_usage_bytes"] == 0
+        assert stats_after.size == 0
+        assert stats_after.hits == 0
+        assert stats_after.misses == 0
+        assert stats_after.evictions == 0
+        assert stats_after.memory_usage_bytes == 0
 
         cache.stop()
 
@@ -512,14 +509,14 @@ class TestCacheStore:
         """Test the stats method."""
         # Initial stats
         stats = self.cache.stats()
-        assert stats["size"] == 0
-        assert stats["hits"] == 0
-        assert stats["misses"] == 0
-        assert stats["evictions"] == 0
-        assert stats["hit_rate"] == 0
-        assert stats["memory_usage_bytes"] == 0
-        assert "max_memory_mb" in stats
-        assert "max_items" in stats
+        assert stats.size == 0
+        assert stats.hits == 0
+        assert stats.misses == 0
+        assert stats.evictions == 0
+        assert stats.hit_rate == 0
+        assert stats.memory_usage_bytes == 0
+        assert stats.max_memory_mb >= 0
+        assert stats.max_items == self.cache.max_items
 
         # Add some data and test operations
         self.cache.set("key1", "value1")
@@ -527,11 +524,11 @@ class TestCacheStore:
         self.cache.get("key2")  # Miss
 
         stats = self.cache.stats()
-        assert stats["size"] == 1
-        assert stats["hits"] == 1
-        assert stats["misses"] == 1
-        assert stats["hit_rate"] == 0.5
-        assert stats["memory_usage_bytes"] > 0
+        assert stats.size == 1
+        assert stats.hits == 1
+        assert stats.misses == 1
+        assert stats.hit_rate == 0.5
+        assert stats.memory_usage_bytes > 0
 
     def test_is_expired_functionality(self):
         """Test the _is_expired method."""

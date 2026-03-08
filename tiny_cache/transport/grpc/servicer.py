@@ -11,7 +11,11 @@ from grpc import StatusCode
 
 import cache_pb2
 import cache_pb2_grpc
-from tiny_cache.application.ports import CacheSetStatus
+from tiny_cache.application.ports import (
+    CacheSetStatus,
+    CacheStatsSnapshot,
+    CacheStorePort,
+)
 from tiny_cache.application.request_context import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -19,15 +23,15 @@ logger = logging.getLogger(__name__)
 
 class CacheApp(Protocol):
     @property
-    def store(self) -> Any: ...
+    def store(self) -> CacheStorePort: ...
 
-    def get(self, key: str, /) -> Any | None: ...
+    def get(self, key: str, /) -> object | None: ...
 
-    def set(self, key: str, value: Any, ttl_seconds: int, /) -> CacheSetStatus: ...
+    def set(self, key: str, value: object, ttl_seconds: int, /) -> CacheSetStatus: ...
 
     def delete(self, key: str, /) -> bool: ...
 
-    def stats(self) -> dict[str, Any]: ...
+    def stats(self) -> CacheStatsSnapshot: ...
 
 
 class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
@@ -141,7 +145,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                     "SET", request.key, client_addr, duration_ms, "CAPACITY_EXHAUSTED"
                 )
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-                context.set_details("Cache capacity exhausted and cannot accommodate new entry")
+                context.set_details(
+                    "Cache capacity exhausted and cannot accommodate new entry"
+                )
                 return cache_pb2.CacheResponse()
 
             raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
@@ -205,21 +211,18 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             stats = await asyncio.to_thread(self._app.stats)
             duration_ms = (time.monotonic() - start_time) * 1000
 
-            result = (
-                f"size={stats.get('size', 0)} hits={stats.get('hits', 0)} "
-                f"misses={stats.get('misses', 0)}"
-            )
+            result = f"size={stats.size} hits={stats.hits} misses={stats.misses}"
             self._log_request("STATS", "", client_addr, duration_ms, result)
 
             max_memory_bytes = int(getattr(self._app.store, "max_memory_bytes", 0))
             max_items = int(getattr(self._app.store, "max_items", 0))
             return cache_pb2.CacheStats(
-                size=stats.get("size", 0),
-                hits=stats.get("hits", 0),
-                misses=stats.get("misses", 0),
-                evictions=stats.get("evictions", 0),
-                hit_rate=stats.get("hit_rate", 0.0),
-                memory_usage_bytes=stats.get("memory_usage_bytes", 0),
+                size=stats.size,
+                hits=stats.hits,
+                misses=stats.misses,
+                evictions=stats.evictions,
+                hit_rate=stats.hit_rate,
+                memory_usage_bytes=stats.memory_usage_bytes,
                 max_memory_bytes=max_memory_bytes,
                 max_items=max_items,
             )

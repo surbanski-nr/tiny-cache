@@ -5,9 +5,9 @@ import sys
 import time
 from collections import OrderedDict
 from threading import Event, Lock, Thread
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
-from tiny_cache.application.ports import CacheSetStatus
+from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
 from tiny_cache.domain.validation import validate_key
 
 DEFAULT_MAX_ITEMS = 1000
@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 
 class CacheEntry:
     def __init__(
-        self, value: Any, ttl: Optional[int] = None, created_at: Optional[float] = None
+        self,
+        value: object,
+        ttl: Optional[int] = None,
+        created_at: Optional[float] = None,
     ):
         self.value = value
         self.ttl = None if ttl is not None and ttl <= 0 else ttl
@@ -97,7 +100,7 @@ class CacheStore:
             return False
         return (self._clock() - entry.created_at) >= entry.ttl
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> object | None:
         validate_key(key)
         with self.lock:
             if key not in self.store:
@@ -114,9 +117,7 @@ class CacheStore:
             self.hits += 1
             return entry.value
 
-    def set(
-        self, key: str, value: Any, ttl: Optional[int] = None
-    ) -> CacheSetStatus:
+    def set(self, key: str, value: object, ttl: Optional[int] = None) -> CacheSetStatus:
         validate_key(key)
         with self.lock:
             old_entry = self.store.pop(key, None)
@@ -187,21 +188,21 @@ class CacheStore:
                 return False
         return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self) -> CacheStatsSnapshot:
         with self.lock:
             self._remove_expired_entries_locked()
             total = self.hits + self.misses
-            return {
-                "size": len(self.store),
-                "hits": self.hits,
-                "misses": self.misses,
-                "evictions": self.evictions,
-                "hit_rate": self.hits / total if total > 0 else 0,
-                "memory_usage_bytes": self.current_memory_bytes,
-                "memory_usage_mb": round(self.current_memory_bytes / (1024 * 1024), 2),
-                "max_memory_mb": round(self.max_memory_bytes / (1024 * 1024), 2),
-                "max_items": self.max_items,
-            }
+            return CacheStatsSnapshot(
+                size=len(self.store),
+                hits=self.hits,
+                misses=self.misses,
+                evictions=self.evictions,
+                hit_rate=self.hits / total if total > 0 else 0,
+                memory_usage_bytes=self.current_memory_bytes,
+                memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
+                max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
+                max_items=self.max_items,
+            )
 
     def _background_cleanup(self) -> None:
         while not self._stop_event.wait(self.cleanup_interval):

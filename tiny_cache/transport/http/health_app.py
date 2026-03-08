@@ -5,10 +5,11 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Protocol
+from typing import Protocol
 
 from aiohttp import web
 
+from tiny_cache.application.ports import CacheStatsSnapshot
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.transport.active_requests import ActiveRequests
 
@@ -42,9 +43,9 @@ class HealthCheckHandler:
             response_data = {
                 "status": "healthy",
                 "uptime_seconds": round(uptime, 2),
-                "cache_size": stats.get("size", 0),
-                "cache_hits": stats.get("hits", 0),
-                "cache_misses": stats.get("misses", 0),
+                "cache_size": stats.size,
+                "cache_hits": stats.hits,
+                "cache_misses": stats.misses,
                 "active_requests": self._active_requests.value,
                 "timestamp": time.time(),
             }
@@ -56,7 +57,9 @@ class HealthCheckHandler:
         except Exception:
             logger.exception("Health check error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
+                text=json.dumps(
+                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
+                ),
                 status=503,
                 content_type="application/json",
             )
@@ -80,7 +83,9 @@ class HealthCheckHandler:
         except Exception:
             logger.exception("Liveness check error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
+                text=json.dumps(
+                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
+                ),
                 status=503,
                 content_type="application/json",
             )
@@ -93,19 +98,19 @@ class HealthCheckHandler:
             lines = [
                 "# HELP tiny_cache_hits_total Total cache hits",
                 "# TYPE tiny_cache_hits_total counter",
-                f"tiny_cache_hits_total {int(stats.get('hits', 0))}",
+                f"tiny_cache_hits_total {int(stats.hits)}",
                 "# HELP tiny_cache_misses_total Total cache misses",
                 "# TYPE tiny_cache_misses_total counter",
-                f"tiny_cache_misses_total {int(stats.get('misses', 0))}",
+                f"tiny_cache_misses_total {int(stats.misses)}",
                 "# HELP tiny_cache_evictions_total Total cache evictions",
                 "# TYPE tiny_cache_evictions_total counter",
-                f"tiny_cache_evictions_total {int(stats.get('evictions', 0))}",
+                f"tiny_cache_evictions_total {int(stats.evictions)}",
                 "# HELP tiny_cache_entries Current number of entries",
                 "# TYPE tiny_cache_entries gauge",
-                f"tiny_cache_entries {int(stats.get('size', 0))}",
+                f"tiny_cache_entries {int(stats.size)}",
                 "# HELP tiny_cache_memory_usage_bytes Current memory usage in bytes (best-effort)",
                 "# TYPE tiny_cache_memory_usage_bytes gauge",
-                f"tiny_cache_memory_usage_bytes {int(stats.get('memory_usage_bytes', 0))}",
+                f"tiny_cache_memory_usage_bytes {int(stats.memory_usage_bytes)}",
                 "# HELP tiny_cache_active_requests Current in-flight gRPC requests",
                 "# TYPE tiny_cache_active_requests gauge",
                 f"tiny_cache_active_requests {int(self._active_requests.value)}",
@@ -129,7 +134,7 @@ class HealthCheckHandler:
         try:
             stats = await asyncio.to_thread(self._app.stats)
             uptime = time.monotonic() - self._start_time
-            payload = dict(stats)
+            payload = stats.to_dict()
             payload.update(
                 {
                     "uptime_seconds": round(uptime, 2),
@@ -143,7 +148,9 @@ class HealthCheckHandler:
         except Exception:
             logger.exception("Stats error")
             return web.Response(
-                text=json.dumps({"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}),
+                text=json.dumps(
+                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
+                ),
                 status=503,
                 content_type="application/json",
             )
@@ -181,4 +188,4 @@ async def create_health_app(
 
 
 class CacheStatsProvider(Protocol):
-    def stats(self) -> dict[str, Any]: ...
+    def stats(self) -> CacheStatsSnapshot: ...
