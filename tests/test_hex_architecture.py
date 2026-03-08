@@ -7,6 +7,7 @@ import grpc
 import pytest
 
 import cache_pb2
+import tiny_cache.main as main_module
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import validate_key
@@ -343,6 +344,50 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         assert "request_id=rid-7" in (ctx.details or "")
     finally:
         request_id_var.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_serve_fails_fast_when_grpc_port_is_not_bound(monkeypatch):
+    settings = _settings()
+
+    class FakeStore:
+        max_memory_bytes = 1
+        max_items = 1
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    class FakeServer:
+        async def start(self) -> None:
+            raise AssertionError("server should not start")
+
+        async def wait_for_termination(self) -> None:
+            raise AssertionError("server should not wait")
+
+        async def stop(self, grace: float | None = None) -> None:
+            return None
+
+    fake_store = FakeStore()
+
+    monkeypatch.setattr(main_module, "CacheStore", lambda **kwargs: fake_store)
+    monkeypatch.setattr(main_module, "GrpcCacheService", lambda app: object())
+    monkeypatch.setattr(
+        main_module.cache_pb2_grpc,
+        "add_CacheServiceServicer_to_server",
+        lambda servicer, server: None,
+    )
+    monkeypatch.setattr(main_module, "add_grpc_health_service", lambda server: object())
+    monkeypatch.setattr(main_module, "add_grpc_listen_port", lambda server, addr, settings: 0)
+    monkeypatch.setattr(
+        main_module.grpc.aio,
+        "server",
+        lambda interceptors=None: FakeServer(),
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to bind gRPC server"):
+        await main_module.serve(settings)
+
+    assert getattr(fake_store, "stopped", False) is True
 
 
 @pytest.mark.asyncio

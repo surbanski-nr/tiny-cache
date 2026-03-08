@@ -50,7 +50,10 @@ async def serve(settings: Settings | None = None) -> None:
     grpc_health_servicer = add_grpc_health_service(grpc_server)
 
     listen_addr = f"{settings.host}:{settings.port}"
-    add_grpc_listen_port(grpc_server, listen_addr, settings)
+    bound_port = add_grpc_listen_port(grpc_server, listen_addr, settings)
+    if bound_port == 0:
+        cache_store.stop()
+        raise RuntimeError(f"Failed to bind gRPC server to {listen_addr}")
 
     transport = "TLS" if settings.tls_enabled else "insecure"
     logger.info("Starting cache service on %s (%s)", listen_addr, transport)
