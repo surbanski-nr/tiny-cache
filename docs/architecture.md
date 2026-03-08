@@ -8,13 +8,13 @@ tiny-cache is a sidecar-friendly cache service that exposes:
 - A small HTTP server for health probes and metrics (`/health`, `/ready`, `/live`, `/metrics`)
 - The standard gRPC health checking service (`grpc.health.v1.Health`)
 
-The current implementation uses an in-memory backend and supports:
+The default implementation uses an in-memory backend, and the composition root can also select a SQLite-backed adapter via configuration. Both support:
 
 - TTL-based expiration
 - LRU eviction
 - A best-effort memory limit based on Python object sizing
 
-Hexagonal note: transports call an application service (`tiny_cache/application/service.py`). The application depends on a cache backend port (`tiny_cache/application/ports.py`). The current in-memory backend (`tiny_cache/infrastructure/memory_store.py`) implements that port; future adapters can choose to leverage native backend behavior (so eviction/TTL/limit semantics are primarily owned by the backend implementation).
+Hexagonal note: transports call an application service (`tiny_cache/application/service.py`). The application depends on a cache backend port (`tiny_cache/application/ports.py`). The in-memory backend (`tiny_cache/infrastructure/memory_store.py`) and SQLite backend (`tiny_cache/infrastructure/sqlite_store.py`) both implement that port; future adapters can choose to leverage native backend behavior (so eviction/TTL/limit semantics are primarily owned by the backend implementation).
 
 ## Trust Boundary
 

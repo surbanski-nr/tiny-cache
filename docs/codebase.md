@@ -29,7 +29,11 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 
 - `tiny_cache/infrastructure/memory_store.py`
   - `CacheEntry`: stored `bytes` value, TTL, creation time, best-effort size.
-  - `CacheStore`: current in-memory backend implementing `CacheStorePort` with `get/set/delete/stats`, LRU eviction, optional cleanup thread.
+  - `CacheStore`: default in-memory backend implementing `CacheStorePort` with `get/set/delete/stats`, LRU eviction, optional cleanup thread.
+- `tiny_cache/infrastructure/sqlite_store.py`
+  - `SqliteCacheStore`: SQLite-backed backend implementing the same port and conditional-write contract using a file-backed store.
+- `tiny_cache/infrastructure/store_factory.py`
+  - Selects the configured backend adapter from validated settings.
 - `tiny_cache/application/ports.py`
   - Cache backend port (`CacheStorePort`) implemented by infrastructure backends.
 - `tiny_cache/transport/grpc/servicer.py`

@@ -15,7 +15,7 @@ from tiny_cache.infrastructure.protobuf import (
     ensure_generated_protobuf_modules,
     load_generated_protobuf_modules,
 )
-from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.infrastructure.store_factory import create_cache_store
 from tiny_cache.infrastructure.tls import add_grpc_listen_port
 from tiny_cache.transport.active_requests import ActiveRequests
 from tiny_cache.transport.grpc.health import add_grpc_health_service
@@ -34,12 +34,7 @@ async def serve(settings: Settings | None = None) -> None:
 
     _, cache_pb2_grpc = load_generated_protobuf_modules()
 
-    cache_store = CacheStore(
-        max_items=settings.max_items,
-        max_memory_mb=settings.max_memory_mb,
-        max_value_bytes=settings.max_value_bytes,
-        cleanup_interval=settings.cleanup_interval,
-    )
+    cache_store = create_cache_store(settings)
     cache_app = CacheApplicationService(cache_store)
     active_requests = ActiveRequests()
 

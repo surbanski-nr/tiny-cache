@@ -24,6 +24,8 @@ from tiny_cache.infrastructure.logging import (
     configure_logging,
 )
 from tiny_cache.infrastructure.memory_store import CacheStore
+from tiny_cache.infrastructure.sqlite_store import SqliteCacheStore
+from tiny_cache.infrastructure.store_factory import create_cache_store
 from tiny_cache.infrastructure.protobuf import ensure_generated_protobuf_modules
 from tiny_cache.infrastructure.tls import (
     add_grpc_listen_port,
@@ -232,6 +234,8 @@ def _settings(**overrides) -> Settings:
         health_port=8080,
         log_level="INFO",
         log_format="text",
+        backend="memory",
+        sqlite_path="tiny-cache.sqlite3",
         tls_enabled=False,
         tls_cert_path=None,
         tls_key_path=None,
@@ -504,6 +508,18 @@ async def test_cli_run_fails_fast_when_generated_protobuf_is_missing(monkeypatch
         await cli_module.run(["stats"])
 
 
+def test_create_cache_store_selects_configured_backend(tmp_path):
+    memory_store = create_cache_store(_settings(backend="memory"))
+    assert isinstance(memory_store, CacheStore)
+    memory_store.stop()
+
+    sqlite_store = create_cache_store(
+        _settings(backend="sqlite", sqlite_path=str(tmp_path / "cache.sqlite3"))
+    )
+    assert isinstance(sqlite_store, SqliteCacheStore)
+    sqlite_store.stop()
+
+
 def test_main_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
     def raise_missing() -> None:
         raise RuntimeError("missing generated protobuf")
@@ -721,7 +737,7 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(monkeypatch):
 
     fake_store = FakeStore()
 
-    monkeypatch.setattr(main_module, "CacheStore", lambda **kwargs: fake_store)
+    monkeypatch.setattr(main_module, "create_cache_store", lambda _settings: fake_store)
     monkeypatch.setattr(main_module, "GrpcCacheService", lambda app: object())
 
     class FakeCachePb2Grpc:

@@ -71,6 +71,10 @@ class TestCacheStore:
             with pytest.raises(ValueError, match="CACHE_LOG_LEVEL must be one of"):
                 load_settings()
 
+        with patch.dict("os.environ", {"CACHE_BACKEND": "redis"}):
+            with pytest.raises(ValueError, match="CACHE_BACKEND must be one of"):
+                load_settings()
+
     def test_get_env_bool_validation(self):
         """Test bool env parsing helper provides clear errors."""
         from tiny_cache.infrastructure.config import get_env_bool

@@ -81,6 +81,8 @@ class Settings(BaseModel):
     health_port: int = Field(ge=1, le=65535)
     log_level: str
     log_format: str
+    backend: str
+    sqlite_path: str
     tls_enabled: bool
     tls_cert_path: str | None
     tls_key_path: str | None
@@ -117,6 +119,10 @@ def load_settings() -> Settings:
         log_format=get_env_choice(
             "CACHE_LOG_FORMAT", "text", {"text", "json"}, normalize=str.lower
         ),
+        backend=get_env_choice(
+            "CACHE_BACKEND", "memory", {"memory", "sqlite"}, normalize=str.lower
+        ),
+        sqlite_path=os.getenv("CACHE_SQLITE_PATH", "tiny-cache.sqlite3"),
         tls_enabled=get_env_bool("CACHE_TLS_ENABLED", False),
         tls_cert_path=os.getenv("CACHE_TLS_CERT_PATH"),
         tls_key_path=os.getenv("CACHE_TLS_KEY_PATH"),

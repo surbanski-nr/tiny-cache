@@ -52,6 +52,8 @@ Environment variables (defaults shown):
 | `CACHE_HEALTH_PORT` | `8080` | HTTP health/metrics bind port |
 | `CACHE_LOG_LEVEL` | `INFO` | Logging verbosity |
 | `CACHE_LOG_FORMAT` | `text` | Logging format (`text` or `json`) |
+| `CACHE_BACKEND` | `memory` | Cache backend adapter (`memory` or `sqlite`) |
+| `CACHE_SQLITE_PATH` | `tiny-cache.sqlite3` | SQLite database path when `CACHE_BACKEND=sqlite` |
 | `CACHE_TLS_ENABLED` | `false` | Enable TLS for gRPC |
 | `CACHE_TLS_CERT_PATH` | (unset) | TLS certificate path (required when TLS enabled) |
 | `CACHE_TLS_KEY_PATH` | (unset) | TLS private key path (required when TLS enabled) |
@@ -85,7 +87,7 @@ Invalid values are rejected at startup with clear errors.
 
 ## Cache Behavior
 
-This section describes the current in-memory backend behavior (`tiny_cache/infrastructure/memory_store.py`).
+This section describes the default in-memory backend behavior (`tiny_cache/infrastructure/memory_store.py`). A SQLite-backed adapter (`tiny_cache/infrastructure/sqlite_store.py`) is also available through the same `CacheStorePort` contract.
 
 ### Get
 
