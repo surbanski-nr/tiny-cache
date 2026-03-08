@@ -5,6 +5,7 @@ import logging
 import time
 import uuid
 from contextvars import Token
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from grpc import StatusCode
@@ -34,6 +35,17 @@ class CacheApp(Protocol):
     def stats(self) -> CacheStatsSnapshot: ...
 
 
+@dataclass(frozen=True, slots=True)
+class RpcRequestState:
+    request_id: str
+    token: Token[str] | None
+    client_addr: str
+    start_time: float
+
+    def duration_ms(self) -> float:
+        return (time.monotonic() - self.start_time) * 1000
+
+
 class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
     def __init__(self, app: CacheApp):
         self._app = app
@@ -45,6 +57,19 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
         request_id = uuid.uuid4().hex
         return request_id, request_id_var.set(request_id)
+
+    def _begin_request(self, context: Any) -> RpcRequestState:
+        request_id, token = self._ensure_request_id()
+        return RpcRequestState(
+            request_id=request_id,
+            token=token,
+            client_addr=self._get_client_address(context),
+            start_time=time.monotonic(),
+        )
+
+    def _finish_request(self, state: RpcRequestState) -> None:
+        if state.token is not None:
+            request_id_var.reset(state.token)
 
     def _get_client_address(self, context: Any) -> str:
         try:
@@ -73,64 +98,99 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             result,
         )
 
+    def _handle_invalid_argument(
+        self,
+        context: Any,
+        state: RpcRequestState,
+        operation: str,
+        key: str,
+        exc: ValueError,
+    ) -> None:
+        self._log_request(
+            operation,
+            key,
+            state.client_addr,
+            state.duration_ms(),
+            "INVALID_KEY",
+        )
+        context.set_code(StatusCode.INVALID_ARGUMENT)
+        context.set_details(str(exc))
+
+    def _handle_internal_error(
+        self,
+        context: Any,
+        state: RpcRequestState,
+        operation: str,
+        key: str,
+        log_message: str,
+    ) -> None:
+        self._log_request(
+            operation,
+            key,
+            state.client_addr,
+            state.duration_ms(),
+            "ERROR",
+        )
+        logger.exception(log_message, key)
+        context.set_code(StatusCode.INTERNAL)
+        context.set_details(f"Internal server error (request_id={state.request_id})")
+
     async def Get(self, request, context):
-        start_time = time.monotonic()
-        request_id, token = self._ensure_request_id()
-        client_addr = self._get_client_address(context)
+        state = self._begin_request(context)
 
         try:
             value = await asyncio.to_thread(self._app.get, request.key)
-            duration_ms = (time.monotonic() - start_time) * 1000
+            duration_ms = state.duration_ms()
 
             if value is None:
-                self._log_request("GET", request.key, client_addr, duration_ms, "MISS")
+                self._log_request(
+                    "GET", request.key, state.client_addr, duration_ms, "MISS"
+                )
                 return cache_pb2.CacheValue(found=False)
 
             if not isinstance(value, bytes):
                 raise TypeError("Cache backend returned non-bytes value")
 
-            self._log_request("GET", request.key, client_addr, duration_ms, "HIT")
+            self._log_request("GET", request.key, state.client_addr, duration_ms, "HIT")
             return cache_pb2.CacheValue(found=True, value=value)
         except ValueError as exc:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request(
-                "GET", request.key, client_addr, duration_ms, "INVALID_KEY"
-            )
-            context.set_code(StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(exc))
+            self._handle_invalid_argument(context, state, "GET", request.key, exc)
             return cache_pb2.CacheValue(found=False)
         except Exception:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("GET", request.key, client_addr, duration_ms, "ERROR")
-            logger.exception("Error in Get operation for key %r", request.key)
-            context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error (request_id={request_id})")
+            self._handle_internal_error(
+                context,
+                state,
+                "GET",
+                request.key,
+                "Error in Get operation for key %r",
+            )
             return cache_pb2.CacheValue(found=False)
         finally:
-            if token is not None:
-                request_id_var.reset(token)
+            self._finish_request(state)
 
     async def Set(self, request, context):
-        start_time = time.monotonic()
-        request_id, token = self._ensure_request_id()
-        client_addr = self._get_client_address(context)
+        state = self._begin_request(context)
 
         try:
             set_status = await asyncio.to_thread(
                 self._app.set, request.key, request.value, request.ttl
             )
-            duration_ms = (time.monotonic() - start_time) * 1000
+            duration_ms = state.duration_ms()
 
             if set_status is CacheSetStatus.OK:
                 ttl_info = f" ttl={request.ttl}s" if request.ttl > 0 else ""
                 self._log_request(
-                    "SET", request.key, client_addr, duration_ms, f"OK{ttl_info}"
+                    "SET", request.key, state.client_addr, duration_ms, f"OK{ttl_info}"
                 )
                 return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
 
             if set_status is CacheSetStatus.VALUE_TOO_LARGE:
                 self._log_request(
-                    "SET", request.key, client_addr, duration_ms, "VALUE_TOO_LARGE"
+                    "SET",
+                    request.key,
+                    state.client_addr,
+                    duration_ms,
+                    "VALUE_TOO_LARGE",
                 )
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
                 context.set_details("Value exceeds maximum allowed cache entry size")
@@ -138,7 +198,11 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
             if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
                 self._log_request(
-                    "SET", request.key, client_addr, duration_ms, "CAPACITY_EXHAUSTED"
+                    "SET",
+                    request.key,
+                    state.client_addr,
+                    duration_ms,
+                    "CAPACITY_EXHAUSTED",
                 )
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
                 context.set_details(
@@ -148,67 +212,58 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
 
             raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
         except ValueError as exc:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request(
-                "SET", request.key, client_addr, duration_ms, "INVALID_KEY"
-            )
-            context.set_code(StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(exc))
+            self._handle_invalid_argument(context, state, "SET", request.key, exc)
             return cache_pb2.CacheResponse()
         except Exception:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("SET", request.key, client_addr, duration_ms, "ERROR")
-            logger.exception("Error in Set operation for key %r", request.key)
-            context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error (request_id={request_id})")
+            self._handle_internal_error(
+                context,
+                state,
+                "SET",
+                request.key,
+                "Error in Set operation for key %r",
+            )
             return cache_pb2.CacheResponse()
         finally:
-            if token is not None:
-                request_id_var.reset(token)
+            self._finish_request(state)
 
     async def Delete(self, request, context):
-        start_time = time.monotonic()
-        request_id, token = self._ensure_request_id()
-        client_addr = self._get_client_address(context)
+        state = self._begin_request(context)
 
         try:
             deleted = await asyncio.to_thread(self._app.delete, request.key)
-            duration_ms = (time.monotonic() - start_time) * 1000
             log_result = "OK" if deleted else "OK_MISSING"
             self._log_request(
-                "DELETE", request.key, client_addr, duration_ms, log_result
+                "DELETE",
+                request.key,
+                state.client_addr,
+                state.duration_ms(),
+                log_result,
             )
             return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
         except ValueError as exc:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request(
-                "DELETE", request.key, client_addr, duration_ms, "INVALID_KEY"
-            )
-            context.set_code(StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(exc))
+            self._handle_invalid_argument(context, state, "DELETE", request.key, exc)
             return cache_pb2.CacheResponse()
         except Exception:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("DELETE", request.key, client_addr, duration_ms, "ERROR")
-            logger.exception("Error in Delete operation for key %r", request.key)
-            context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error (request_id={request_id})")
+            self._handle_internal_error(
+                context,
+                state,
+                "DELETE",
+                request.key,
+                "Error in Delete operation for key %r",
+            )
             return cache_pb2.CacheResponse()
         finally:
-            if token is not None:
-                request_id_var.reset(token)
+            self._finish_request(state)
 
     async def Stats(self, request, context):
-        start_time = time.monotonic()
-        request_id, token = self._ensure_request_id()
-        client_addr = self._get_client_address(context)
+        state = self._begin_request(context)
 
         try:
             stats = await asyncio.to_thread(self._app.stats)
-            duration_ms = (time.monotonic() - start_time) * 1000
-
             result = f"size={stats.size} hits={stats.hits} misses={stats.misses}"
-            self._log_request("STATS", "", client_addr, duration_ms, result)
+            self._log_request(
+                "STATS", "", state.client_addr, state.duration_ms(), result
+            )
 
             max_memory_bytes = int(getattr(self._app.store, "max_memory_bytes", 0))
             max_items = int(getattr(self._app.store, "max_items", 0))
@@ -223,12 +278,13 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 max_items=max_items,
             )
         except Exception:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            self._log_request("STATS", "", client_addr, duration_ms, "ERROR")
-            logger.exception("Error in Stats operation")
-            context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error (request_id={request_id})")
+            self._handle_internal_error(
+                context,
+                state,
+                "STATS",
+                "",
+                "Error in Stats operation for key %r",
+            )
             return cache_pb2.CacheStats()
         finally:
-            if token is not None:
-                request_id_var.reset(token)
+            self._finish_request(state)
