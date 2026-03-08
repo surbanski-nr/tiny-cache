@@ -27,7 +27,7 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 ## Key Files
 
 - `tiny_cache/infrastructure/memory_store.py`
-  - `CacheEntry`: stored value, TTL, creation time, best-effort size.
+  - `CacheEntry`: stored `bytes` value, TTL, creation time, best-effort size.
   - `CacheStore`: current in-memory backend implementing `CacheStorePort` with `get/set/delete/stats`, LRU eviction, optional cleanup thread.
 - `tiny_cache/application/ports.py`
   - Cache backend port (`CacheStorePort`) implemented by infrastructure backends.

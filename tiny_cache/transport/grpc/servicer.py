@@ -25,9 +25,9 @@ class CacheApp(Protocol):
     @property
     def store(self) -> CacheStorePort: ...
 
-    def get(self, key: str, /) -> object | None: ...
+    def get(self, key: str, /) -> bytes | None: ...
 
-    def set(self, key: str, value: object, ttl_seconds: int, /) -> CacheSetStatus: ...
+    def set(self, key: str, value: bytes, ttl_seconds: int, /) -> CacheSetStatus: ...
 
     def delete(self, key: str, /) -> bool: ...
 
@@ -86,15 +86,11 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._log_request("GET", request.key, client_addr, duration_ms, "MISS")
                 return cache_pb2.CacheValue(found=False)
 
-            if isinstance(value, bytes):
-                encoded_value = value
-            elif isinstance(value, str):
-                encoded_value = value.encode("utf-8")
-            else:
-                encoded_value = str(value).encode("utf-8")
+            if not isinstance(value, bytes):
+                raise TypeError("Cache backend returned non-bytes value")
 
             self._log_request("GET", request.key, client_addr, duration_ms, "HIT")
-            return cache_pb2.CacheValue(found=True, value=encoded_value)
+            return cache_pb2.CacheValue(found=True, value=value)
         except ValueError as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._log_request(

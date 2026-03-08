@@ -12,7 +12,7 @@ import tiny_cache.main as main_module
 from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
 from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
-from tiny_cache.domain.validation import validate_key
+from tiny_cache.domain.validation import validate_key, validate_value
 from tiny_cache.infrastructure.config import Settings
 from tiny_cache.infrastructure.logging import (
     JsonFormatter,
@@ -39,6 +39,11 @@ pytestmark = [pytest.mark.unit]
 def test_validate_key_rejects_non_string():
     with pytest.raises(TypeError, match="Key must be a string"):
         validate_key(123)  # type: ignore[arg-type]
+
+
+def test_validate_value_rejects_non_bytes():
+    with pytest.raises(TypeError, match="Cache value must be bytes"):
+        validate_value("value")  # type: ignore[arg-type]
 
 
 def test_active_requests_counter_increments_and_decrements():
@@ -247,14 +252,14 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     with caplog.at_level(logging.DEBUG, logger="tiny_cache.transport.grpc.servicer"):
         service._log_request("GET", "k", "peer", 1.0, "HIT")
 
-    class StringApp:
+    class BytesApp:
         def __init__(self):
             self.store = store
 
         def get(self, _key: str):
-            return "hello"
+            return b"hello"
 
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
             raise AssertionError("not used")
 
         def delete(self, _key: str) -> bool:
@@ -263,7 +268,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
-    value = await GrpcCacheService(StringApp()).Get(
+    value = await GrpcCacheService(BytesApp()).Get(
         cache_pb2.CacheKey(key="k"),
         _FakeContext(metadata=[("x-request-id", "rid-1")]),
     )
@@ -277,7 +282,7 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def get(self, _key: str):
             return 123
 
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
             raise AssertionError("not used")
 
         def delete(self, _key: str) -> bool:
@@ -286,12 +291,18 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
         def stats(self) -> CacheStatsSnapshot:
             raise AssertionError("not used")
 
-    value = await GrpcCacheService(ObjApp()).Get(
-        cache_pb2.CacheKey(key="k"),
-        _FakeContext(metadata=[("x-request-id", "rid-2")]),
-    )
-    assert value.found is True
-    assert value.value == b"123"
+    token = request_id_var.set("rid-2")
+    try:
+        obj_ctx = _FakeContext(metadata=[("x-request-id", "rid-2")])
+        value = await GrpcCacheService(ObjApp()).Get(
+            cache_pb2.CacheKey(key="k"),
+            obj_ctx,
+        )
+        assert value.found is False
+        assert obj_ctx.code == grpc.StatusCode.INTERNAL
+        assert "request_id=rid-2" in (obj_ctx.details or "")
+    finally:
+        request_id_var.reset(token)
 
     ctx = _FakeContext(metadata=[("x-request-id", "rid-3")])
     await service.Set(cache_pb2.CacheItem(key="", value=b"v", ttl=0), ctx)
@@ -398,7 +409,7 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
         def get(self, _key: str):
             raise AssertionError("not used")
 
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
             return CacheSetStatus.VALUE_TOO_LARGE
 
         def delete(self, _key: str) -> bool:
@@ -408,7 +419,7 @@ async def test_grpc_set_returns_specific_resource_exhausted_reasons():
             raise AssertionError("not used")
 
     class CapacityApp(TooLargeApp):
-        def set(self, _key: str, _value: Any, _ttl_seconds: int) -> CacheSetStatus:
+        def set(self, _key: str, _value: bytes, _ttl_seconds: int) -> CacheSetStatus:
             return CacheSetStatus.CAPACITY_EXHAUSTED
 
     too_large_ctx = _FakeContext(metadata=[("x-request-id", "rid-oversize")])

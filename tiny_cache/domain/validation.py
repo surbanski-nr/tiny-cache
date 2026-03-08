@@ -10,3 +10,8 @@ def validate_key(key: str) -> None:
         raise ValueError("Key cannot be empty")
     if len(key) > MAX_KEY_LENGTH:
         raise ValueError(f"Key is too long (max {MAX_KEY_LENGTH})")
+
+
+def validate_value(value: bytes) -> None:
+    if not isinstance(value, bytes):
+        raise TypeError("Cache value must be bytes")

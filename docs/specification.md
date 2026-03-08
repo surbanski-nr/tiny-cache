@@ -70,7 +70,7 @@ Invalid values are rejected at startup with clear errors.
 ### Values
 
 - Over the gRPC API, values are `bytes` and are stored and returned as `bytes`.
-- When using `CacheStore` directly, values may be any Python object.
+- When using `CacheStore` directly, values must also be `bytes`; non-bytes inputs raise `TypeError`.
 
 ### TTL
 
@@ -97,7 +97,7 @@ This section describes the current in-memory backend behavior (`tiny_cache/infra
 Inputs:
 
 - `key` (string)
-- `value` (`bytes` for gRPC; any Python object for direct `CacheStore` use)
+- `value` (`bytes`)
 - `ttl` (optional seconds)
 
 Behavior:

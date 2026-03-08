@@ -125,7 +125,7 @@ class TestCacheStore:
     def test_set_and_get_basic_functionality(self):
         """Test basic set and get operations."""
         key = "test_key"
-        value = "test_value"
+        value = b"test_value"
 
         # Test set
         result = self.cache.set(key, value)
@@ -144,6 +144,11 @@ class TestCacheStore:
         assert self.cache.hits == 0
         assert self.cache.misses == 1
 
+    def test_set_rejects_non_bytes_value(self):
+        """Test cache store rejects non-bytes values."""
+        with pytest.raises(TypeError, match="Cache value must be bytes"):
+            self.cache.set("invalid", "value")  # type: ignore[arg-type]
+
     def test_set_with_ttl(self):
         """Test setting a value with TTL."""
 
@@ -158,7 +163,7 @@ class TestCacheStore:
                 self.now += seconds
 
         key = "ttl_key"
-        value = "ttl_value"
+        value = b"ttl_value"
         ttl = 1  # 1 second
 
         clock = FakeClock()
@@ -200,8 +205,8 @@ class TestCacheStore:
             max_items=10, max_memory_mb=1, cleanup_interval=10, clock=clock
         )
 
-        assert cache.set("ttl-boundary", "value", ttl=1) is CacheSetStatus.OK
-        assert cache.get("ttl-boundary") == "value"
+        assert cache.set("ttl-boundary", b"value", ttl=1) is CacheSetStatus.OK
+        assert cache.get("ttl-boundary") == b"value"
 
         clock.advance(1.0)
 
@@ -212,7 +217,7 @@ class TestCacheStore:
     def test_set_with_zero_ttl_is_treated_as_no_ttl(self):
         """Test setting a value with ttl=0 is treated as no TTL."""
         key = "zero_ttl_key"
-        value = "zero_ttl_value"
+        value = b"zero_ttl_value"
 
         result = self.cache.set(key, value, ttl=0)
         assert result is CacheSetStatus.OK
@@ -225,7 +230,7 @@ class TestCacheStore:
     def test_set_with_negative_ttl_is_treated_as_no_ttl(self):
         """Test setting a value with ttl<0 is treated as no TTL."""
         key = "negative_ttl_key"
-        value = "negative_ttl_value"
+        value = b"negative_ttl_value"
 
         result = self.cache.set(key, value, ttl=-1)
         assert result is CacheSetStatus.OK
@@ -238,8 +243,8 @@ class TestCacheStore:
     def test_update_existing_key(self):
         """Test updating an existing key."""
         key = "update_key"
-        value1 = "value1"
-        value2 = "value2"
+        value1 = b"value1"
+        value2 = b"value2"
 
         # Set initial value
         self.cache.set(key, value1)
@@ -257,9 +262,9 @@ class TestCacheStore:
         """Test updating a key at capacity does not evict other keys or break memory tracking."""
         cache = CacheStore(max_items=3, max_memory_mb=10, cleanup_interval=10)
 
-        cache.set("key1", "value1")
-        cache.set("key2", "value2")
-        cache.set("key3", "value3")
+        cache.set("key1", b"value1")
+        cache.set("key2", b"value2")
+        cache.set("key3", b"value3")
 
         stats_before = cache.stats()
         assert stats_before.size == 3
@@ -269,14 +274,14 @@ class TestCacheStore:
                 e.size_bytes for e in cache.store.values()
             )
 
-        cache.set("key1", "value1_updated")
+        cache.set("key1", b"value1_updated")
 
         stats_after = cache.stats()
         assert stats_after.size == 3
         assert stats_after.evictions == 0
-        assert cache.get("key1") == "value1_updated"
-        assert cache.get("key2") == "value2"
-        assert cache.get("key3") == "value3"
+        assert cache.get("key1") == b"value1_updated"
+        assert cache.get("key2") == b"value2"
+        assert cache.get("key3") == b"value3"
         with cache.lock:
             assert cache.current_memory_bytes == sum(
                 e.size_bytes for e in cache.store.values()
@@ -287,13 +292,13 @@ class TestCacheStore:
     def test_update_existing_key_restores_old_entry_when_value_too_large(self):
         """Test updating a key restores the old value when the new value exceeds max memory."""
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
-        cache.set("key", "small")
+        cache.set("key", b"small")
 
-        too_large_value = "x" * (2 * 1024 * 1024)  # > 1MB
+        too_large_value = b"x" * (2 * 1024 * 1024)  # > 1MB
         result = cache.set("key", too_large_value)
 
         assert result is CacheSetStatus.VALUE_TOO_LARGE
-        assert cache.get("key") == "small"
+        assert cache.get("key") == b"small"
         with cache.lock:
             assert cache.current_memory_bytes == sum(
                 e.size_bytes for e in cache.store.values()
@@ -304,19 +309,19 @@ class TestCacheStore:
     def test_update_existing_key_restores_old_entry_when_eviction_fails(self):
         """Test updating a key restores the old value when eviction fails."""
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
-        cache.set("key1", "value1")
-        cache.set("key2", "value2")
+        cache.set("key1", b"value1")
+        cache.set("key2", b"value2")
 
-        size_value2 = sys.getsizeof("value2")
-        size_new = sys.getsizeof("value1_updated")
+        size_value2 = sys.getsizeof(b"value2")
+        size_new = sys.getsizeof(b"value1_updated")
         cache.max_memory_bytes = size_value2 + size_new - 1
 
         with patch.object(cache, "_evict_to_fit", return_value=False):
-            result = cache.set("key1", "value1_updated")
+            result = cache.set("key1", b"value1_updated")
 
         assert result is CacheSetStatus.CAPACITY_EXHAUSTED
-        assert cache.get("key1") == "value1"
-        assert cache.get("key2") == "value2"
+        assert cache.get("key1") == b"value1"
+        assert cache.get("key2") == b"value2"
         with cache.lock:
             assert cache.current_memory_bytes == sum(
                 e.size_bytes for e in cache.store.values()
@@ -329,14 +334,14 @@ class TestCacheStore:
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
         cache.max_items = 0
 
-        assert cache.set("key", "value") is CacheSetStatus.CAPACITY_EXHAUSTED
+        assert cache.set("key", b"value") is CacheSetStatus.CAPACITY_EXHAUSTED
 
         cache.stop()
 
     def test_delete_existing_key(self):
         """Test deleting an existing key."""
         key = "delete_key"
-        value = "delete_value"
+        value = b"delete_value"
 
         # Set and verify
         self.cache.set(key, value)
@@ -355,7 +360,7 @@ class TestCacheStore:
     def test_key_validation(self):
         """Test key validation rejects empty and oversized keys."""
         with pytest.raises(ValueError, match="Key cannot be empty"):
-            self.cache.set("", "value")
+            self.cache.set("", b"value")
         with pytest.raises(ValueError, match="Key cannot be empty"):
             self.cache.get("")
         with pytest.raises(ValueError, match="Key cannot be empty"):
@@ -363,27 +368,27 @@ class TestCacheStore:
 
         too_long_key = "k" * (MAX_KEY_LENGTH + 1)
         with pytest.raises(ValueError, match="Key is too long"):
-            self.cache.set(too_long_key, "value")
+            self.cache.set(too_long_key, b"value")
 
     def test_lru_eviction_by_item_count(self):
         """Test LRU eviction when max items is reached."""
         cache = CacheStore(max_items=3, max_memory_mb=100)
 
         # Fill cache to capacity
-        cache.set("key1", "value1")
-        cache.set("key2", "value2")
-        cache.set("key3", "value3")
+        cache.set("key1", b"value1")
+        cache.set("key2", b"value2")
+        cache.set("key3", b"value3")
 
         # Access key1 to make it recently used
         cache.get("key1")
 
         # Add another item, should evict key2 (least recently used)
-        cache.set("key4", "value4")
+        cache.set("key4", b"value4")
 
-        assert cache.get("key1") == "value1"  # Should still exist
+        assert cache.get("key1") == b"value1"  # Should still exist
         assert cache.get("key2") is None  # Should be evicted
-        assert cache.get("key3") == "value3"  # Should still exist
-        assert cache.get("key4") == "value4"  # Should exist
+        assert cache.get("key3") == b"value3"  # Should still exist
+        assert cache.get("key4") == b"value4"  # Should exist
 
         stats = cache.stats()
         assert stats.size == 3
@@ -417,8 +422,8 @@ class TestCacheStore:
             max_items=10, max_memory_mb=10, cleanup_interval=10, max_value_bytes=100
         )
 
-        assert cache.set("small", "x") is CacheSetStatus.OK
-        assert cache.set("large", "x" * 1000) is CacheSetStatus.VALUE_TOO_LARGE
+        assert cache.set("small", b"x") is CacheSetStatus.OK
+        assert cache.set("large", b"x" * 1000) is CacheSetStatus.VALUE_TOO_LARGE
         assert cache.get("large") is None
 
         cache.stop()
@@ -459,9 +464,9 @@ class TestCacheStore:
     def test_clear_cache(self):
         """Test clearing the entire cache."""
         # Add some items
-        self.cache.set("key1", "value1")
-        self.cache.set("key2", "value2")
-        self.cache.set("key3", "value3")
+        self.cache.set("key1", b"value1")
+        self.cache.set("key2", b"value2")
+        self.cache.set("key3", b"value3")
 
         stats_before = self.cache.stats()
         assert stats_before.size == 3
@@ -482,12 +487,12 @@ class TestCacheStore:
     def test_clear_resets_stats_counters(self):
         """Test clearing the cache resets hits/misses/evictions counters."""
         cache = CacheStore(max_items=2, max_memory_mb=1, cleanup_interval=10)
-        cache.set("key1", "value1")
+        cache.set("key1", b"value1")
         cache.get("key1")  # Hit
         cache.get("missing")  # Miss
 
-        cache.set("key2", "value2")
-        cache.set("key3", "value3")  # Evicts LRU key1
+        cache.set("key2", b"value2")
+        cache.set("key3", b"value3")  # Evicts LRU key1
 
         stats_before = cache.stats()
         assert stats_before.hits == 1
@@ -519,7 +524,7 @@ class TestCacheStore:
         assert stats.max_items == self.cache.max_items
 
         # Add some data and test operations
-        self.cache.set("key1", "value1")
+        self.cache.set("key1", b"value1")
         self.cache.get("key1")  # Hit
         self.cache.get("key2")  # Miss
 
@@ -549,7 +554,7 @@ class TestCacheStore:
         )
 
         # Create entry with TTL
-        entry_with_ttl = CacheEntry("value", ttl=1, created_at=clock())
+        entry_with_ttl = CacheEntry(b"value", ttl=1, created_at=clock())
         assert not cache._is_expired(entry_with_ttl)
 
         # Advance time past TTL
@@ -557,7 +562,7 @@ class TestCacheStore:
         assert cache._is_expired(entry_with_ttl)
 
         # Create entry without TTL
-        entry_without_ttl = CacheEntry("value", created_at=clock())
+        entry_without_ttl = CacheEntry(b"value", created_at=clock())
         assert not cache._is_expired(entry_without_ttl)
 
         cache.stop()
@@ -568,10 +573,10 @@ class TestCacheStore:
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=1)
 
         # Add item with short TTL
-        cache.set("expire_key", "expire_value", ttl=1)
+        cache.set("expire_key", b"expire_value", ttl=1)
 
         # Verify item exists
-        assert cache.get("expire_key") == "expire_value"
+        assert cache.get("expire_key") == b"expire_value"
 
         deadline = time.time() + 2.0
         while time.time() < deadline:
@@ -590,14 +595,14 @@ class TestCacheStore:
     def test_thread_safety(self):
         """Test thread safety of cache operations."""
         cache = CacheStore(max_items=100, max_memory_mb=10)
-        results: Queue[tuple[str, str, str | None]] = Queue()
+        results: Queue[tuple[str, bytes, bytes | None]] = Queue()
         errors: Queue[Exception] = Queue()
 
         def worker(thread_id):
             try:
                 for i in range(10):
                     key = f"thread_{thread_id}_key_{i}"
-                    value = f"thread_{thread_id}_value_{i}"
+                    value = f"thread_{thread_id}_value_{i}".encode()
 
                     # Set value
                     cache.set(key, value)
@@ -648,7 +653,7 @@ class TestCacheStore:
             self.cache.store, "pop", side_effect=Exception("Test exception")
         ):
             with pytest.raises(Exception, match="Test exception"):
-                self.cache.set("test_key", "test_value")
+                self.cache.set("test_key", b"test_value")
 
     def test_error_handling_in_delete(self):
         """Test error handling in delete method."""
@@ -704,7 +709,7 @@ class TestCacheStore:
     def test_memory_tracking_accuracy(self):
         """Test that memory tracking is accurate."""
         key = "memory_test"
-        value = "x" * 100  # 100 character string
+        value = b"x" * 100  # 100 byte value
 
         initial_memory = self.cache.current_memory_bytes
 
@@ -725,9 +730,9 @@ class TestCacheStore:
         cache = CacheStore(max_items=3, max_memory_mb=10)
 
         # Add items
-        cache.set("key1", "value1")
-        cache.set("key2", "value2")
-        cache.set("key3", "value3")
+        cache.set("key1", b"value1")
+        cache.set("key2", b"value2")
+        cache.set("key3", b"value3")
 
         # Access key1 to make it most recently used
         cache.get("key1")
@@ -738,11 +743,11 @@ class TestCacheStore:
         # key3 should be least recently used
 
         # Add new item, should evict key3
-        cache.set("key4", "value4")
+        cache.set("key4", b"value4")
 
-        assert cache.get("key1") == "value1"  # Should exist
-        assert cache.get("key2") == "value2"  # Should exist
+        assert cache.get("key1") == b"value1"  # Should exist
+        assert cache.get("key2") == b"value2"  # Should exist
         assert cache.get("key3") is None  # Should be evicted
-        assert cache.get("key4") == "value4"  # Should exist
+        assert cache.get("key4") == b"value4"  # Should exist
 
         cache.stop()

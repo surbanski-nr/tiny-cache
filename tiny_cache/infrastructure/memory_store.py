@@ -5,10 +5,10 @@ import sys
 import time
 from collections import OrderedDict
 from threading import Event, Lock, Thread
-from typing import Callable, Optional
+from typing import Callable
 
 from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
-from tiny_cache.domain.validation import validate_key
+from tiny_cache.domain.validation import validate_key, validate_value
 
 DEFAULT_MAX_ITEMS = 1000
 DEFAULT_MAX_MEMORY_MB = 100
@@ -20,25 +20,35 @@ logger = logging.getLogger(__name__)
 class CacheEntry:
     def __init__(
         self,
-        value: object,
-        ttl: Optional[int] = None,
-        created_at: Optional[float] = None,
+        value: bytes,
+        ttl: int | None = None,
+        created_at: float | None = None,
     ):
+        self._value = b""
         self.value = value
         self.ttl = None if ttl is not None and ttl <= 0 else ttl
         self.created_at = created_at if created_at is not None else time.monotonic()
+
+    @property
+    def value(self) -> bytes:
+        return self._value
+
+    @value.setter
+    def value(self, value: bytes) -> None:
+        validate_value(value)
+        self._value = value
         self.size_bytes = sys.getsizeof(value)
 
 
 class CacheStore:
     def __init__(
         self,
-        max_items: Optional[int] = None,
-        max_memory_mb: Optional[int] = None,
-        cleanup_interval: Optional[int] = None,
-        max_value_bytes: Optional[int] = None,
+        max_items: int | None = None,
+        max_memory_mb: int | None = None,
+        cleanup_interval: int | None = None,
+        max_value_bytes: int | None = None,
         start_cleaner: bool = True,
-        clock: Optional[Callable[[], float]] = None,
+        clock: Callable[[], float] | None = None,
     ):
         resolved_max_items = DEFAULT_MAX_ITEMS if max_items is None else max_items
         if resolved_max_items < 1:
@@ -100,7 +110,7 @@ class CacheStore:
             return False
         return (self._clock() - entry.created_at) >= entry.ttl
 
-    def get(self, key: str) -> object | None:
+    def get(self, key: str) -> bytes | None:
         validate_key(key)
         with self.lock:
             if key not in self.store:
@@ -117,8 +127,9 @@ class CacheStore:
             self.hits += 1
             return entry.value
 
-    def set(self, key: str, value: object, ttl: Optional[int] = None) -> CacheSetStatus:
+    def set(self, key: str, value: bytes, ttl: int | None = None) -> CacheSetStatus:
         validate_key(key)
+        validate_value(value)
         with self.lock:
             old_entry = self.store.pop(key, None)
             if old_entry is not None:
@@ -210,15 +221,15 @@ class CacheStore:
                 with self.lock:
                     items = list(self.store.items())
 
-                expired_keys = [k for k, v in items if self._is_expired(v)]
+                expired_keys = [key for key, entry in items if self._is_expired(entry)]
                 if not expired_keys:
                     continue
 
                 with self.lock:
-                    for k in expired_keys:
-                        entry = self.store.get(k)
+                    for key in expired_keys:
+                        entry = self.store.get(key)
                         if entry is not None and self._is_expired(entry):
-                            self._remove_entry(k)
+                            self._remove_entry(key)
             except Exception:
                 logger.exception("Error in background cleanup")
 
