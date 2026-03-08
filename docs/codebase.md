@@ -11,6 +11,12 @@ This document is a quick orientation guide to the repository. For behavior detai
 
 Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally not tracked and are produced via `task gen`.
 
+## Local Development Workflow
+
+- Use `uv sync` to create and manage `.venv/`
+- Use `uv run ...` for local commands so tooling always runs inside the managed environment
+- Regenerate protobuf stubs with `uv run task gen` after changing `cache.proto`
+
 ## How Requests Flow
 
 1. A client calls the gRPC service (`cache.CacheService`) defined in `cache.proto`.
@@ -38,17 +44,22 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 
 ## Development Entry Points
 
-- Generate protobuf stubs: `task gen`
+- Generate protobuf stubs: `uv run task gen`
 - Run locally: `uv run python -m tiny_cache`
 - Run tests:
   - Unit: `uv run pytest -m unit`
   - Integration: `uv run pytest -m integration`
   - Coverage: `uv run pytest --cov=tiny_cache --cov-report=term-missing`
+- Rebuild container locally:
+  - `docker-compose down -v || true`
+  - `docker-compose build --no-cache`
+  - `docker-compose up -d`
+  - `docker-compose logs --tail=200 cache-service`
 
 - Code quality:
-  - Lint: `task lint`
-  - Format: `task format`
-  - Typecheck: `task typecheck`
+  - Lint: `uv run task lint`
+  - Format: `uv run task format`
+  - Typecheck: `uv run task typecheck`
 
 ## Related Documents
 

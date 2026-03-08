@@ -16,6 +16,8 @@ A lightweight gRPC cache service designed to work as a sidecar. Provides in-memo
 
 Local development is tested with Python 3.11 (matching the Docker image). See `.python-version`.
 
+Use `uv sync` and `uv run` as the canonical local workflow. The managed environment is `.venv/`; do not rely on an ad-hoc `venv/` if one happens to exist locally.
+
 ```bash
 # Install uv: https://docs.astral.sh/uv/
 
@@ -25,7 +27,7 @@ uv sync
 # Install task runner (Taskfile): https://taskfile.dev
 
 # Generate protobuf files
-task gen
+uv run task gen
 
 # Start server
 uv run python -m tiny_cache
@@ -34,7 +36,13 @@ uv run python -m tiny_cache
 ### Docker
 
 ```bash
-docker-compose up -d --build
+# Rebuild from scratch
+
+docker-compose down -v || true
+docker-compose build --no-cache
+docker-compose up -d
+
+docker-compose logs --tail=200 cache-service
 
 # Default ports:
 # - gRPC: 127.0.0.1:50051
@@ -78,7 +86,7 @@ The service implements the following gRPC methods:
 The repo includes a small CLI client for quick manual testing:
 
 ```bash
-task gen
+uv run task gen
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 stats
@@ -90,13 +98,16 @@ uv run python -m tiny_cache.cli --target 127.0.0.1:50051 stats
 # Install dependencies (includes test + dev tooling)
 uv sync
 
+# Generate protobuf stubs
+uv run task gen
+
 # Run tests with coverage
 uv run pytest --cov=tiny_cache --cov-report=term-missing
 
 # Lint/format/typecheck
-task lint
-task format
-task typecheck
+uv run task lint
+uv run task format
+uv run task typecheck
 ```
 
 ## License
