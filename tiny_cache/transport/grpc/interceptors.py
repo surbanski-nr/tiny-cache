@@ -29,11 +29,13 @@ class RequestIdInterceptor(grpc.aio.ServerInterceptor):
     async def intercept_service(
         self,
         continuation: Callable[
-            [grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler]
+            [grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler | None]
         ],
         handler_call_details: grpc.HandlerCallDetails,
-    ) -> grpc.RpcMethodHandler:
+    ) -> grpc.RpcMethodHandler | None:
         handler = await continuation(handler_call_details)
+        if handler is None:
+            return None
 
         async def _run_with_request_id(
             context: Any,
@@ -161,11 +163,13 @@ class ActiveRequestsInterceptor(grpc.aio.ServerInterceptor):
     async def intercept_service(
         self,
         continuation: Callable[
-            [grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler]
+            [grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler | None]
         ],
         handler_call_details: grpc.HandlerCallDetails,
-    ) -> grpc.RpcMethodHandler:
+    ) -> grpc.RpcMethodHandler | None:
         handler = await continuation(handler_call_details)
+        if handler is None:
+            return None
 
         rpc_method = getattr(handler_call_details, "method", "unknown")
 

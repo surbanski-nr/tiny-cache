@@ -346,6 +346,28 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
 
 
 @pytest.mark.asyncio
+async def test_interceptors_return_none_when_handler_is_missing():
+    request_id_interceptor = RequestIdInterceptor()
+    active_requests_interceptor = ActiveRequestsInterceptor(ActiveRequests())
+
+    class Details:
+        method = "/cache.CacheService/Missing"
+
+    async def continuation(_details):
+        return None
+
+    request_id_handler = await request_id_interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
+    active_requests_handler = await active_requests_interceptor.intercept_service(
+        continuation, cast(grpc.HandlerCallDetails, Details())
+    )
+
+    assert request_id_handler is None
+    assert active_requests_handler is None
+
+
+@pytest.mark.asyncio
 async def test_request_id_interceptor_sets_context_and_metadata():
     interceptor = RequestIdInterceptor()
 
