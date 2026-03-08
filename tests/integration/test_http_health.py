@@ -107,6 +107,10 @@ async def test_health_endpoints_ok():
 
             async with session.get(f"http://127.0.0.1:{port}/") as resp:
                 assert resp.status == 200
+                assert resp.headers.get("Content-Type", "").startswith(
+                    "application/json"
+                )
+                assert resp.headers.get("x-request-id")
                 payload = await resp.json()
                 assert payload["service"] == "tiny-cache"
                 assert "/health" in payload["endpoints"]

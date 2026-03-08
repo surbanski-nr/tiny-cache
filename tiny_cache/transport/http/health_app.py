@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 import uuid
@@ -15,6 +14,18 @@ from tiny_cache.transport.active_requests import ActiveRequests
 
 logger = logging.getLogger(__name__)
 SERVICE_UNAVAILABLE_MESSAGE = "Service unavailable"
+PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4"
+
+
+def _json_response(payload: dict[str, object], *, status: int = 200) -> web.Response:
+    return web.json_response(payload, status=status)
+
+
+def _service_unavailable_response() -> web.Response:
+    return _json_response(
+        {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE},
+        status=503,
+    )
 
 
 @web.middleware
@@ -40,29 +51,20 @@ class HealthCheckHandler:
         try:
             stats = await asyncio.to_thread(self._app.stats)
             uptime = time.monotonic() - self._start_time
-            response_data = {
-                "status": "healthy",
-                "uptime_seconds": round(uptime, 2),
-                "cache_size": stats.size,
-                "cache_hits": stats.hits,
-                "cache_misses": stats.misses,
-                "active_requests": self._active_requests.value,
-                "timestamp": time.time(),
-            }
-            return web.Response(
-                text=json.dumps(response_data),
-                status=200,
-                content_type="application/json",
+            return _json_response(
+                {
+                    "status": "healthy",
+                    "uptime_seconds": round(uptime, 2),
+                    "cache_size": stats.size,
+                    "cache_hits": stats.hits,
+                    "cache_misses": stats.misses,
+                    "active_requests": self._active_requests.value,
+                    "timestamp": time.time(),
+                }
             )
         except Exception:
             logger.exception("Health check error")
-            return web.Response(
-                text=json.dumps(
-                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
-                ),
-                status=503,
-                content_type="application/json",
-            )
+            return _service_unavailable_response()
 
     async def readiness_check(self, request: web.Request) -> web.Response:
         return await self.health_check(request)
@@ -70,25 +72,16 @@ class HealthCheckHandler:
     async def liveness_check(self, request: web.Request) -> web.Response:
         try:
             uptime = time.monotonic() - self._start_time
-            response_data = {
-                "status": "alive",
-                "uptime_seconds": round(uptime, 2),
-                "timestamp": time.time(),
-            }
-            return web.Response(
-                text=json.dumps(response_data),
-                status=200,
-                content_type="application/json",
+            return _json_response(
+                {
+                    "status": "alive",
+                    "uptime_seconds": round(uptime, 2),
+                    "timestamp": time.time(),
+                }
             )
         except Exception:
             logger.exception("Liveness check error")
-            return web.Response(
-                text=json.dumps(
-                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
-                ),
-                status=503,
-                content_type="application/json",
-            )
+            return _service_unavailable_response()
 
     async def metrics(self, request: web.Request) -> web.Response:
         try:
@@ -122,12 +115,12 @@ class HealthCheckHandler:
             return web.Response(
                 text="\n".join(lines),
                 status=200,
-                content_type="text/plain; version=0.0.4",
+                content_type=PROMETHEUS_CONTENT_TYPE,
             )
         except Exception:
             logger.exception("Metrics error")
             return web.Response(
-                text="", status=503, content_type="text/plain; version=0.0.4"
+                text="", status=503, content_type=PROMETHEUS_CONTENT_TYPE
             )
 
     async def stats(self, request: web.Request) -> web.Response:
@@ -142,18 +135,10 @@ class HealthCheckHandler:
                     "timestamp": time.time(),
                 }
             )
-            return web.Response(
-                text=json.dumps(payload), status=200, content_type="application/json"
-            )
+            return _json_response(payload)
         except Exception:
             logger.exception("Stats error")
-            return web.Response(
-                text=json.dumps(
-                    {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE}
-                ),
-                status=503,
-                content_type="application/json",
-            )
+            return _service_unavailable_response()
 
 
 async def create_health_app(
@@ -172,15 +157,12 @@ async def create_health_app(
     app.router.add_get("/stats", handler.stats)
 
     async def root_handler(request: web.Request) -> web.Response:
-        return web.Response(
-            text=json.dumps(
-                {
-                    "service": "tiny-cache",
-                    "endpoints": ["/health", "/ready", "/live", "/metrics", "/stats"],
-                    "grpc_port": grpc_port,
-                }
-            ),
-            content_type="application/json",
+        return _json_response(
+            {
+                "service": "tiny-cache",
+                "endpoints": ["/health", "/ready", "/live", "/metrics", "/stats"],
+                "grpc_port": grpc_port,
+            }
         )
 
     app.router.add_get("/", root_handler)
