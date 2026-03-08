@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Callable, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +28,29 @@ def get_env_int(
         raise ValueError(f"{env_name} must be >= {min_value}, got {value}")
     if max_value is not None and value > max_value:
         raise ValueError(f"{env_name} must be <= {max_value}, got {value}")
+    return value
+
+
+
+def get_env_choice(
+    env_name: str,
+    default_value: str,
+    allowed_values: set[str],
+    *,
+    normalize: Callable[[str], str] | None = None,
+) -> str:
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        value = default_value
+    else:
+        value = raw_value.strip()
+
+    if normalize is not None:
+        value = normalize(value)
+
+    if value not in allowed_values:
+        allowed = ", ".join(sorted(allowed_values))
+        raise ValueError(f"{env_name} must be one of: {allowed}; got {value!r}")
     return value
 
 
@@ -85,8 +108,15 @@ def load_settings() -> Settings:
         health_port=get_env_int(
             "CACHE_HEALTH_PORT", 8080, min_value=1, max_value=65535
         ),
-        log_level=os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
-        log_format=os.getenv("CACHE_LOG_FORMAT", "text"),
+        log_level=get_env_choice(
+            "CACHE_LOG_LEVEL",
+            "INFO",
+            {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"},
+            normalize=str.upper,
+        ),
+        log_format=get_env_choice(
+            "CACHE_LOG_FORMAT", "text", {"text", "json"}, normalize=str.lower
+        ),
         tls_enabled=get_env_bool("CACHE_TLS_ENABLED", False),
         tls_cert_path=os.getenv("CACHE_TLS_CERT_PATH"),
         tls_key_path=os.getenv("CACHE_TLS_KEY_PATH"),

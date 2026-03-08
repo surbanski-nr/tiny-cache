@@ -59,6 +59,19 @@ class TestCacheStore:
             with pytest.raises(ValueError, match="CACHE_MAX_ITEMS must be >= 1"):
                 get_env_int("CACHE_MAX_ITEMS", 1000, min_value=1)
 
+    def test_get_env_choice_validation(self):
+        """Test env choice parsing rejects unsupported values."""
+        from tiny_cache.infrastructure.config import load_settings
+
+        with patch.dict("os.environ", {"CACHE_LOG_FORMAT": "xml"}):
+            with pytest.raises(ValueError, match="CACHE_LOG_FORMAT must be one of"):
+                load_settings()
+
+        with patch.dict("os.environ", {"CACHE_LOG_LEVEL": "TRACE"}):
+            with pytest.raises(ValueError, match="CACHE_LOG_LEVEL must be one of"):
+                load_settings()
+
+
     def test_get_env_bool_validation(self):
         """Test bool env parsing helper provides clear errors."""
         from tiny_cache.infrastructure.config import get_env_bool
