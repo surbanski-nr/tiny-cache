@@ -57,3 +57,6 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 - `docs/api-contract.md`: gRPC + HTTP contract notes
 - `docs/TEST_README.md`: testing guide
 - `docs/code-review.md`: exhaustive improvement TODO list
+- `docs/todo-errors-and-reliability.md`: review follow-up for correctness and ops
+- `docs/todo-features.md`: feature ideas discovered during review
+- `docs/todo-design-and-readability.md`: refactoring and maintainability follow-up
