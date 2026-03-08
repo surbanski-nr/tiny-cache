@@ -55,6 +55,10 @@ class CacheStore:
         self.hits = 0
         self.misses = 0
         self.evictions = 0
+        self.lru_evictions = 0
+        self.expired_removals = 0
+        self.rejected_oversize = 0
+        self.rejected_capacity = 0
         self.lock = Lock()
         self._clock = clock or time.monotonic
 
@@ -94,7 +98,7 @@ class CacheStore:
             entry = self.store[key]
             if self._is_expired(entry):
                 self.misses += 1
-                self._remove_entry(key)
+                self._remove_expired_entry(key)
                 return None
 
             self.store.move_to_end(key)
@@ -115,6 +119,7 @@ class CacheStore:
                 if old_entry is not None:
                     self.store[key] = old_entry
                     self.current_memory_bytes += old_entry.size_bytes
+                self.rejected_oversize += 1
                 return CacheSetStatus.VALUE_TOO_LARGE
 
             if self.current_memory_bytes + entry.size_bytes > self.max_memory_bytes:
@@ -122,12 +127,14 @@ class CacheStore:
                     if old_entry is not None:
                         self.store[key] = old_entry
                         self.current_memory_bytes += old_entry.size_bytes
+                    self.rejected_capacity += 1
                     return CacheSetStatus.CAPACITY_EXHAUSTED
 
             is_new_key = old_entry is None
             if is_new_key:
                 while len(self.store) >= self.max_items:
                     if not self._evict_lru():
+                        self.rejected_capacity += 1
                         return CacheSetStatus.CAPACITY_EXHAUSTED
 
             self.store[key] = entry
@@ -148,12 +155,17 @@ class CacheStore:
             entry = self.store.pop(key)
             self.current_memory_bytes -= entry.size_bytes
 
+    def _remove_expired_entry(self, key: str) -> None:
+        if key in self.store:
+            self._remove_entry(key)
+            self.expired_removals += 1
+
     def _remove_expired_entries_locked(self) -> None:
         expired_keys = [
             key for key, entry in self.store.items() if self._is_expired(entry)
         ]
         for key in expired_keys:
-            self._remove_entry(key)
+            self._remove_expired_entry(key)
 
     def _snapshot_items(self) -> list[tuple[str, CacheEntry]]:
         with self.lock:
@@ -163,7 +175,7 @@ class CacheStore:
         with self.lock:
             entry = self.store.get(key)
             if entry is not None and self._is_expired(entry):
-                self._remove_entry(key)
+                self._remove_expired_entry(key)
 
     def _evict_lru(self) -> bool:
         if not self.store:
@@ -172,6 +184,7 @@ class CacheStore:
         lru_key = next(iter(self.store))
         self._remove_entry(lru_key)
         self.evictions += 1
+        self.lru_evictions += 1
         return True
 
     def _evict_to_fit(self, required_bytes: int) -> bool:
@@ -192,6 +205,10 @@ class CacheStore:
                 hits=self.hits,
                 misses=self.misses,
                 evictions=self.evictions,
+                lru_evictions=self.lru_evictions,
+                expired_removals=self.expired_removals,
+                rejected_oversize=self.rejected_oversize,
+                rejected_capacity=self.rejected_capacity,
                 hit_rate=self.hits / total if total > 0 else 0,
                 memory_usage_bytes=self.current_memory_bytes,
                 memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
@@ -208,6 +225,10 @@ class CacheStore:
             self.hits = 0
             self.misses = 0
             self.evictions = 0
+            self.lru_evictions = 0
+            self.expired_removals = 0
+            self.rejected_oversize = 0
+            self.rejected_capacity = 0
 
     def stop(self) -> None:
         self._stop_event.set()

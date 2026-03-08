@@ -92,6 +92,10 @@ async def test_health_endpoints_ok():
                 assert "tiny_cache_hits_total 0" in metrics
                 assert "tiny_cache_misses_total 0" in metrics
                 assert "tiny_cache_evictions_total 0" in metrics
+                assert "tiny_cache_lru_evictions_total 0" in metrics
+                assert "tiny_cache_expired_removals_total 0" in metrics
+                assert "tiny_cache_rejected_oversize_total 0" in metrics
+                assert "tiny_cache_rejected_capacity_total 0" in metrics
                 assert "tiny_cache_entries 0" in metrics
                 assert "tiny_cache_capacity_max_items 10" in metrics
                 assert "tiny_cache_capacity_max_memory_bytes 1048576" in metrics
@@ -109,6 +113,10 @@ async def test_health_endpoints_ok():
                 assert payload["hits"] == 0
                 assert payload["misses"] == 0
                 assert payload["evictions"] == 0
+                assert payload["lru_evictions"] == 0
+                assert payload["expired_removals"] == 0
+                assert payload["rejected_oversize"] == 0
+                assert payload["rejected_capacity"] == 0
                 assert payload["hit_rate"] == 0.0
                 assert payload["memory_usage_bytes"] == 0
                 assert payload["memory_usage_mb"] == 0.0

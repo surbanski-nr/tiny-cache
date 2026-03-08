@@ -17,6 +17,10 @@ class CacheStatsSnapshot:
     hits: int
     misses: int
     evictions: int
+    lru_evictions: int
+    expired_removals: int
+    rejected_oversize: int
+    rejected_capacity: int
     hit_rate: float
     memory_usage_bytes: int
     memory_usage_mb: float
@@ -31,6 +35,10 @@ class CacheStatsSnapshot:
             "hits": self.hits,
             "misses": self.misses,
             "evictions": self.evictions,
+            "lru_evictions": self.lru_evictions,
+            "expired_removals": self.expired_removals,
+            "rejected_oversize": self.rejected_oversize,
+            "rejected_capacity": self.rejected_capacity,
             "hit_rate": self.hit_rate,
             "memory_usage_bytes": self.memory_usage_bytes,
             "memory_usage_mb": self.memory_usage_mb,

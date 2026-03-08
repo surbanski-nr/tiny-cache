@@ -518,6 +518,10 @@ class TestCacheStore:
         assert stats.hits == 0
         assert stats.misses == 0
         assert stats.evictions == 0
+        assert stats.lru_evictions == 0
+        assert stats.expired_removals == 0
+        assert stats.rejected_oversize == 0
+        assert stats.rejected_capacity == 0
         assert stats.hit_rate == 0
         assert stats.memory_usage_bytes == 0
         assert stats.max_memory_bytes == self.cache.max_memory_bytes
@@ -536,6 +540,59 @@ class TestCacheStore:
         assert stats.misses == 1
         assert stats.hit_rate == 0.5
         assert stats.memory_usage_bytes > 0
+
+    def test_stats_track_eviction_and_rejection_reasons(self):
+        eviction_cache = CacheStore(max_items=1, max_memory_mb=1, cleanup_interval=10)
+        eviction_cache.set("first", b"value1")
+        eviction_cache.set("second", b"value2")
+        eviction_cache.max_value_bytes = 100
+        assert (
+            eviction_cache.set("too_big", b"x" * 128)
+            is CacheSetStatus.VALUE_TOO_LARGE
+        )
+
+        capacity_cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
+        capacity_cache.set("key1", b"value1")
+        capacity_cache.set("key2", b"value2")
+        size_value2 = sys.getsizeof(b"value2")
+        size_new = sys.getsizeof(b"value1_updated")
+        capacity_cache.max_memory_bytes = size_value2 + size_new - 1
+        capacity_cache.max_value_bytes = 100
+
+        with patch.object(capacity_cache, "_evict_to_fit", return_value=False):
+            assert (
+                capacity_cache.set("key1", b"value1_updated")
+                is CacheSetStatus.CAPACITY_EXHAUSTED
+            )
+
+        current_time = 0.0
+        expiring = CacheStore(
+            max_items=10,
+            max_memory_mb=1,
+            cleanup_interval=10,
+            start_cleaner=False,
+            clock=lambda: current_time,
+        )
+        expiring.set("ephemeral", b"value", ttl=1)
+        current_time = 1.0
+        assert expiring.get("ephemeral") is None
+
+        eviction_stats = eviction_cache.stats()
+        assert eviction_stats.lru_evictions == 1
+        assert eviction_stats.rejected_oversize == 1
+        assert eviction_stats.rejected_capacity == 0
+
+        capacity_stats = capacity_cache.stats()
+        assert capacity_stats.lru_evictions == 0
+        assert capacity_stats.rejected_oversize == 0
+        assert capacity_stats.rejected_capacity == 1
+
+        expiring_stats = expiring.stats()
+        assert expiring_stats.expired_removals == 1
+
+        eviction_cache.stop()
+        capacity_cache.stop()
+        expiring.stop()
 
     def test_is_expired_functionality(self):
         """Test the _is_expired method."""
