@@ -11,8 +11,11 @@ Service:
 Methods:
 
 - `Get(CacheKey) -> CacheValue`
+- `MultiGet(MultiCacheKeyRequest) -> MultiCacheValueResponse`
 - `Set(CacheItem) -> CacheResponse`
+- `MultiSet(MultiCacheItemRequest) -> MultiCacheResponse`
 - `Delete(CacheKey) -> CacheResponse`
+- `MultiDelete(MultiCacheKeyRequest) -> MultiCacheResponse`
 - `Stats(Empty) -> CacheStats`
 
 ### Messages
@@ -26,8 +29,21 @@ Methods:
 - `CacheValue`
   - `found: bool`
   - `value: bytes`
+- `CacheLookup`
+  - `key: string`
+  - `found: bool`
+  - `value: bytes`
+  - `error: string` (empty on normal hit/miss)
+- `MultiCacheValueResponse`
+  - `items: repeated CacheLookup`
 - `CacheResponse`
   - `status: CacheStatus`
+- `CacheOperationResult`
+  - `key: string`
+  - `status: CacheStatus`
+  - `error: string` (empty on success)
+- `MultiCacheResponse`
+  - `items: repeated CacheOperationResult`
 - `CacheStats`
   - `size: int32`
   - `hits: int32`
@@ -53,17 +69,30 @@ Methods:
   - Key too long (>256): `INVALID_ARGUMENT`
   - Key missing/expired: `CacheValue(found=false)`
   - Key present: `CacheValue(found=true, value=...)`
+- `MultiGet`
+  - Success: always returns `MultiCacheValueResponse`
+  - Results preserve request order
+  - Missing keys use `found=false` with an empty `error`
+  - Per-item validation or backend failures are reported in `error` instead of failing the whole RPC
 - `Set`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
   - Success: `CacheResponse(status=OK)`
   - Size-limit or capacity failure: `RESOURCE_EXHAUSTED` (details may distinguish oversize values from exhausted capacity; response message is not authoritative)
   - Unexpected errors: `INTERNAL` with generic details including a request id
+- `MultiSet`
+  - Success: always returns `MultiCacheResponse`
+  - Results preserve request order
+  - Per-item failures use `CacheOperationResult(status=ERROR, error=...)`
 - `Delete`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
   - Idempotent: always returns `CacheResponse(status=OK)` on success path (missing keys are not an error)
   - Unexpected errors: `INTERNAL` with generic details including a request id
+- `MultiDelete`
+  - Success: always returns `MultiCacheResponse`
+  - Missing keys are still reported with `status=OK`
+  - Per-item validation or backend failures use `status=ERROR` with `error=...`
 - `Stats`
   - Success: returns `CacheStats`
   - Unexpected errors: `INTERNAL` with generic details including a request id

@@ -21,6 +21,9 @@ from tiny_cache.application.request_context import request_id_var
 
 logger = logging.getLogger(__name__)
 
+VALUE_TOO_LARGE_MESSAGE = "Value exceeds maximum allowed cache entry size"
+CAPACITY_EXHAUSTED_MESSAGE = "Cache capacity exhausted and cannot accommodate new entry"
+
 
 class CacheApp(Protocol):
     @property
@@ -98,6 +101,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             result,
         )
 
+    def _internal_error_details(self, state: RpcRequestState) -> str:
+        return f"Internal server error (request_id={state.request_id})"
+
     def _handle_invalid_argument(
         self,
         context: Any,
@@ -133,7 +139,124 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         )
         logger.exception(log_message, key)
         context.set_code(StatusCode.INTERNAL)
-        context.set_details(f"Internal server error (request_id={state.request_id})")
+        context.set_details(self._internal_error_details(state))
+
+    def _set_status_details(self, set_status: CacheSetStatus) -> tuple[str, str | None]:
+        if set_status is CacheSetStatus.OK:
+            return "OK", None
+        if set_status is CacheSetStatus.VALUE_TOO_LARGE:
+            return "VALUE_TOO_LARGE", VALUE_TOO_LARGE_MESSAGE
+        if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
+            return "CAPACITY_EXHAUSTED", CAPACITY_EXHAUSTED_MESSAGE
+        raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
+
+    def _build_multi_get_items(
+        self,
+        keys: list[str],
+        request_id: str,
+    ) -> list[cache_pb2.CacheLookup]:
+        results: list[cache_pb2.CacheLookup] = []
+        for key in keys:
+            try:
+                value = self._app.get(key)
+                if value is None:
+                    results.append(cache_pb2.CacheLookup(key=key, found=False))
+                    continue
+                if not isinstance(value, bytes):
+                    raise TypeError("Cache backend returned non-bytes value")
+                results.append(cache_pb2.CacheLookup(key=key, found=True, value=value))
+            except ValueError as exc:
+                results.append(
+                    cache_pb2.CacheLookup(key=key, found=False, error=str(exc))
+                )
+            except Exception:
+                logger.exception("Error in MultiGet operation for key %r", key)
+                results.append(
+                    cache_pb2.CacheLookup(
+                        key=key,
+                        found=False,
+                        error=f"Internal server error (request_id={request_id})",
+                    )
+                )
+        return results
+
+    def _build_multi_set_results(
+        self,
+        items: list[cache_pb2.CacheItem],
+        request_id: str,
+    ) -> list[cache_pb2.CacheOperationResult]:
+        results: list[cache_pb2.CacheOperationResult] = []
+        for item in items:
+            try:
+                set_status = self._app.set(item.key, item.value, item.ttl)
+                log_result, error = self._set_status_details(set_status)
+                if error is None:
+                    results.append(
+                        cache_pb2.CacheOperationResult(
+                            key=item.key,
+                            status=cache_pb2.CacheStatus.OK,
+                        )
+                    )
+                    continue
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=item.key,
+                        status=cache_pb2.CacheStatus.ERROR,
+                        error=error,
+                    )
+                )
+            except ValueError as exc:
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=item.key,
+                        status=cache_pb2.CacheStatus.ERROR,
+                        error=str(exc),
+                    )
+                )
+            except Exception:
+                logger.exception("Error in MultiSet operation for key %r", item.key)
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=item.key,
+                        status=cache_pb2.CacheStatus.ERROR,
+                        error=f"Internal server error (request_id={request_id})",
+                    )
+                )
+        return results
+
+    def _build_multi_delete_results(
+        self,
+        keys: list[str],
+        request_id: str,
+    ) -> list[cache_pb2.CacheOperationResult]:
+        results: list[cache_pb2.CacheOperationResult] = []
+        for key in keys:
+            try:
+                self._app.delete(key)
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=key,
+                        status=cache_pb2.CacheStatus.OK,
+                    )
+                )
+            except ValueError as exc:
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=key,
+                        status=cache_pb2.CacheStatus.ERROR,
+                        error=str(exc),
+                    )
+                )
+            except Exception:
+                logger.exception("Error in MultiDelete operation for key %r", key)
+                results.append(
+                    cache_pb2.CacheOperationResult(
+                        key=key,
+                        status=cache_pb2.CacheStatus.ERROR,
+                        error=f"Internal server error (request_id={request_id})",
+                    )
+                )
+        return results
 
     async def Get(self, request, context):
         state = self._begin_request(context)
@@ -168,6 +291,38 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         finally:
             self._finish_request(state)
 
+    async def MultiGet(self, request, context):
+        state = self._begin_request(context)
+
+        try:
+            items = await asyncio.to_thread(
+                self._build_multi_get_items,
+                list(request.keys),
+                state.request_id,
+            )
+            hits = sum(1 for item in items if item.found)
+            errors = sum(1 for item in items if item.error)
+            misses = len(items) - hits - errors
+            self._log_request(
+                "MULTI_GET",
+                f"count={len(request.keys)}",
+                state.client_addr,
+                state.duration_ms(),
+                f"hits={hits} misses={misses} errors={errors}",
+            )
+            return cache_pb2.MultiCacheValueResponse(items=items)
+        except Exception:
+            self._handle_internal_error(
+                context,
+                state,
+                "MULTI_GET",
+                f"count={len(request.keys)}",
+                "Error in MultiGet operation for key %r",
+            )
+            return cache_pb2.MultiCacheValueResponse()
+        finally:
+            self._finish_request(state)
+
     async def Set(self, request, context):
         state = self._begin_request(context)
 
@@ -176,41 +331,25 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._app.set, request.key, request.value, request.ttl
             )
             duration_ms = state.duration_ms()
+            log_result, error = self._set_status_details(set_status)
 
-            if set_status is CacheSetStatus.OK:
+            if error is None:
                 ttl_info = f" ttl={request.ttl}s" if request.ttl > 0 else ""
                 self._log_request(
                     "SET", request.key, state.client_addr, duration_ms, f"OK{ttl_info}"
                 )
                 return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
 
-            if set_status is CacheSetStatus.VALUE_TOO_LARGE:
-                self._log_request(
-                    "SET",
-                    request.key,
-                    state.client_addr,
-                    duration_ms,
-                    "VALUE_TOO_LARGE",
-                )
-                context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-                context.set_details("Value exceeds maximum allowed cache entry size")
-                return cache_pb2.CacheResponse()
-
-            if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
-                self._log_request(
-                    "SET",
-                    request.key,
-                    state.client_addr,
-                    duration_ms,
-                    "CAPACITY_EXHAUSTED",
-                )
-                context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-                context.set_details(
-                    "Cache capacity exhausted and cannot accommodate new entry"
-                )
-                return cache_pb2.CacheResponse()
-
-            raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
+            self._log_request(
+                "SET",
+                request.key,
+                state.client_addr,
+                duration_ms,
+                log_result,
+            )
+            context.set_code(StatusCode.RESOURCE_EXHAUSTED)
+            context.set_details(error)
+            return cache_pb2.CacheResponse()
         except ValueError as exc:
             self._handle_invalid_argument(context, state, "SET", request.key, exc)
             return cache_pb2.CacheResponse()
@@ -223,6 +362,39 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 "Error in Set operation for key %r",
             )
             return cache_pb2.CacheResponse()
+        finally:
+            self._finish_request(state)
+
+    async def MultiSet(self, request, context):
+        state = self._begin_request(context)
+
+        try:
+            items = await asyncio.to_thread(
+                self._build_multi_set_results,
+                list(request.items),
+                state.request_id,
+            )
+            ok_count = sum(
+                1 for item in items if item.status == cache_pb2.CacheStatus.OK
+            )
+            error_count = len(items) - ok_count
+            self._log_request(
+                "MULTI_SET",
+                f"count={len(request.items)}",
+                state.client_addr,
+                state.duration_ms(),
+                f"ok={ok_count} errors={error_count}",
+            )
+            return cache_pb2.MultiCacheResponse(items=items)
+        except Exception:
+            self._handle_internal_error(
+                context,
+                state,
+                "MULTI_SET",
+                f"count={len(request.items)}",
+                "Error in MultiSet operation for key %r",
+            )
+            return cache_pb2.MultiCacheResponse()
         finally:
             self._finish_request(state)
 
@@ -252,6 +424,39 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 "Error in Delete operation for key %r",
             )
             return cache_pb2.CacheResponse()
+        finally:
+            self._finish_request(state)
+
+    async def MultiDelete(self, request, context):
+        state = self._begin_request(context)
+
+        try:
+            items = await asyncio.to_thread(
+                self._build_multi_delete_results,
+                list(request.keys),
+                state.request_id,
+            )
+            ok_count = sum(
+                1 for item in items if item.status == cache_pb2.CacheStatus.OK
+            )
+            error_count = len(items) - ok_count
+            self._log_request(
+                "MULTI_DELETE",
+                f"count={len(request.keys)}",
+                state.client_addr,
+                state.duration_ms(),
+                f"ok={ok_count} errors={error_count}",
+            )
+            return cache_pb2.MultiCacheResponse(items=items)
+        except Exception:
+            self._handle_internal_error(
+                context,
+                state,
+                "MULTI_DELETE",
+                f"count={len(request.keys)}",
+                "Error in MultiDelete operation for key %r",
+            )
+            return cache_pb2.MultiCacheResponse()
         finally:
             self._finish_request(state)
 

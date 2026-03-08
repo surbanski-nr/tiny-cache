@@ -405,6 +405,32 @@ async def test_grpc_servicer_covers_error_and_encoding_branches(caplog):
     finally:
         request_id_var.reset(token)
 
+    multi_get = await boom_service.MultiGet(
+        cache_pb2.MultiCacheKeyRequest(keys=["k", ""]),
+        _FakeContext(metadata=[("x-request-id", "rid-8")]),
+    )
+    assert multi_get.items[0].error.startswith("Internal server error (request_id=")
+    assert multi_get.items[1].error.startswith("Internal server error (request_id=")
+
+    multi_set = await boom_service.MultiSet(
+        cache_pb2.MultiCacheItemRequest(
+            items=[
+                cache_pb2.CacheItem(key="k", value=b"v", ttl=0),
+                cache_pb2.CacheItem(key="", value=b"v", ttl=0),
+            ]
+        ),
+        _FakeContext(metadata=[("x-request-id", "rid-9")]),
+    )
+    assert multi_set.items[0].error.startswith("Internal server error (request_id=")
+    assert multi_set.items[1].error.startswith("Internal server error (request_id=")
+
+    multi_delete = await boom_service.MultiDelete(
+        cache_pb2.MultiCacheKeyRequest(keys=["k", ""]),
+        _FakeContext(metadata=[("x-request-id", "rid-10")]),
+    )
+    assert multi_delete.items[0].error.startswith("Internal server error (request_id=")
+    assert multi_delete.items[1].error.startswith("Internal server error (request_id=")
+
 
 def test_ensure_generated_protobuf_modules_requires_generated_files(tmp_path):
     (tmp_path / "cache_pb2.py").write_text("# generated")

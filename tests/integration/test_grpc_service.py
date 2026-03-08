@@ -111,6 +111,76 @@ async def test_delete_missing_is_idempotent_ok(grpc_server):
     assert response.status == cache_pb2.CacheStatus.OK
 
 
+async def test_multiget_returns_ordered_results_and_item_errors(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(
+        max_items=10, max_memory_mb=1, cleanup_interval=3600, clock=clock
+    )
+    stub, _service = await grpc_server(cache_store)
+
+    response = await stub.Set(cache_pb2.CacheItem(key="k1", value=b"hello", ttl=0))
+    assert response.status == cache_pb2.CacheStatus.OK
+
+    result = await stub.MultiGet(
+        cache_pb2.MultiCacheKeyRequest(keys=["k1", "missing", ""])
+    )
+
+    assert [item.key for item in result.items] == ["k1", "missing", ""]
+    assert result.items[0].found is True
+    assert result.items[0].value == b"hello"
+    assert result.items[0].error == ""
+    assert result.items[1].found is False
+    assert result.items[1].error == ""
+    assert result.items[2].found is False
+    assert result.items[2].error == "Key cannot be empty"
+
+
+async def test_multiset_and_multidelete_return_per_item_results(grpc_server):
+    clock = ThreadSafeClock()
+    cache_store = CacheStore(
+        max_items=10,
+        max_memory_mb=1,
+        cleanup_interval=3600,
+        max_value_bytes=40,
+        clock=clock,
+    )
+    stub, _service = await grpc_server(cache_store)
+
+    multi_set = await stub.MultiSet(
+        cache_pb2.MultiCacheItemRequest(
+            items=[
+                cache_pb2.CacheItem(key="ok", value=b"v", ttl=0),
+                cache_pb2.CacheItem(key="", value=b"bad", ttl=0),
+                cache_pb2.CacheItem(key="big", value=b"x" * 128, ttl=0),
+            ]
+        )
+    )
+
+    assert [item.key for item in multi_set.items] == ["ok", "", "big"]
+    assert multi_set.items[0].status == cache_pb2.CacheStatus.OK
+    assert multi_set.items[0].error == ""
+    assert multi_set.items[1].status == cache_pb2.CacheStatus.ERROR
+    assert multi_set.items[1].error == "Key cannot be empty"
+    assert multi_set.items[2].status == cache_pb2.CacheStatus.ERROR
+    assert multi_set.items[2].error == "Value exceeds maximum allowed cache entry size"
+
+    ok_value = await stub.Get(cache_pb2.CacheKey(key="ok"))
+    assert ok_value.found is True
+
+    multi_delete = await stub.MultiDelete(
+        cache_pb2.MultiCacheKeyRequest(keys=["ok", "missing", ""])
+    )
+
+    assert [item.key for item in multi_delete.items] == ["ok", "missing", ""]
+    assert multi_delete.items[0].status == cache_pb2.CacheStatus.OK
+    assert multi_delete.items[1].status == cache_pb2.CacheStatus.OK
+    assert multi_delete.items[2].status == cache_pb2.CacheStatus.ERROR
+    assert multi_delete.items[2].error == "Key cannot be empty"
+
+    deleted_value = await stub.Get(cache_pb2.CacheKey(key="ok"))
+    assert deleted_value.found is False
+
+
 async def test_invalid_key_returns_invalid_argument(grpc_server):
     clock = ThreadSafeClock()
     cache_store = CacheStore(

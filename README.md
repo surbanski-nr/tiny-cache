@@ -77,8 +77,11 @@ Environment variables:
 The service implements the following gRPC methods:
 
 - `Get(CacheKey) → CacheValue`: Retrieve cached value
+- `MultiGet(MultiCacheKeyRequest) → MultiCacheValueResponse`: Retrieve multiple keys in one round trip
 - `Set(CacheItem) → CacheResponse`: Store value with optional TTL
+- `MultiSet(MultiCacheItemRequest) → MultiCacheResponse`: Store multiple entries with per-item results
 - `Delete(CacheKey) → CacheResponse`: Remove cached entry
+- `MultiDelete(MultiCacheKeyRequest) → MultiCacheResponse`: Remove multiple keys with per-item results
 - `Stats(Empty) → CacheStats`: Get cache statistics
 
 ## CLI (Optional)

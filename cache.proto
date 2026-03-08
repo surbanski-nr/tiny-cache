@@ -4,8 +4,11 @@ package cache;
 
 service CacheService {
   rpc Get (CacheKey) returns (CacheValue);
+  rpc MultiGet (MultiCacheKeyRequest) returns (MultiCacheValueResponse);
   rpc Set (CacheItem) returns (CacheResponse);
+  rpc MultiSet (MultiCacheItemRequest) returns (MultiCacheResponse);
   rpc Delete (CacheKey) returns (CacheResponse);
+  rpc MultiDelete (MultiCacheKeyRequest) returns (MultiCacheResponse);
   rpc Stats (Empty) returns (CacheStats);
 }
 
@@ -19,10 +22,18 @@ message CacheKey {
   string key = 1;
 }
 
+message MultiCacheKeyRequest {
+  repeated string keys = 1;
+}
+
 message CacheItem {
   string key = 1;
   bytes value = 2;
   int32 ttl = 3;
+}
+
+message MultiCacheItemRequest {
+  repeated CacheItem items = 1;
 }
 
 message CacheValue {
@@ -30,8 +41,29 @@ message CacheValue {
   bytes value = 2;
 }
 
+message CacheLookup {
+  string key = 1;
+  bool found = 2;
+  bytes value = 3;
+  string error = 4;
+}
+
+message MultiCacheValueResponse {
+  repeated CacheLookup items = 1;
+}
+
 message CacheResponse {
   CacheStatus status = 1;
+}
+
+message CacheOperationResult {
+  string key = 1;
+  CacheStatus status = 2;
+  string error = 3;
+}
+
+message MultiCacheResponse {
+  repeated CacheOperationResult items = 1;
 }
 
 message CacheStats {

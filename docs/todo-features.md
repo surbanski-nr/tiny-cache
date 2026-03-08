@@ -6,7 +6,7 @@ This list focuses on feature additions that fit the current service shape withou
 
 ## Candidate Features
 
-- [ ] Add batch RPCs such as `MultiGet`, `MultiSet`, and `MultiDelete` to reduce round trips for high-churn callers.
+- [x] Add batch RPCs such as `MultiGet`, `MultiSet`, and `MultiDelete` to reduce round trips for high-churn callers. The gRPC API now exposes per-item batch operations that preserve request order and return item-level errors without aborting the whole batch.
 - [ ] Add Prometheus capacity metrics for `max_items`, `max_memory_bytes`, `max_value_bytes`, and saturation ratios so alerting can be based on headroom instead of only misses and evictions.
 - [ ] Add eviction and rejection reason metrics so operators can distinguish expired cleanup, LRU eviction, oversize values, and memory-pressure failures.
 - [ ] Add optional namespace or prefix isolation so multiple applications can safely share one cache sidecar or service instance.

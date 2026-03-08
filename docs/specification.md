@@ -147,7 +147,7 @@ The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cle
 ### gRPC API
 
 - Implemented via `grpc.aio`.
-- Unary RPCs for `Get`, `Set`, `Delete`, `Stats`.
+- Unary RPCs for `Get`, `Set`, `Delete`, `Stats`, plus batch RPCs `MultiGet`, `MultiSet`, and `MultiDelete`.
 - Standard gRPC health service (`grpc.health.v1.Health`) is also served.
 - Request IDs:
   - Accepted from `x-request-id` request metadata when provided
