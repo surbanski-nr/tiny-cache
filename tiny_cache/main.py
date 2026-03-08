@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 
 import grpc
@@ -109,13 +108,11 @@ async def serve(settings: Settings | None = None) -> None:
 
 
 def main() -> None:
-    configure_logging(
-        os.getenv("CACHE_LOG_LEVEL", "INFO").upper(),
-        os.getenv("CACHE_LOG_FORMAT", "text"),
-    )
+    settings: Settings | None = None
     try:
-        ensure_generated_protobuf_modules()
         settings = load_settings()
+        configure_logging(settings.log_level, settings.log_format)
+        ensure_generated_protobuf_modules()
         asyncio.run(serve(settings))
     except Exception:
         logger.exception("Failed to start cache service")

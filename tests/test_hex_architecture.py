@@ -442,6 +442,31 @@ def test_main_fails_fast_when_generated_protobuf_is_missing(monkeypatch):
         main_module.main()
 
 
+def test_main_configures_logging_from_validated_settings(monkeypatch):
+    captured: dict[str, str] = {}
+
+    monkeypatch.setattr(
+        main_module,
+        "load_settings",
+        lambda: _settings(log_level="DEBUG", log_format="json"),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "configure_logging",
+        lambda level, fmt: captured.update(level=level, fmt=fmt),
+    )
+
+    def raise_missing() -> None:
+        raise RuntimeError("missing generated protobuf")
+
+    monkeypatch.setattr(main_module, "ensure_generated_protobuf_modules", raise_missing)
+
+    with pytest.raises(RuntimeError, match="missing generated protobuf"):
+        main_module.main()
+
+    assert captured == {"level": "DEBUG", "fmt": "json"}
+
+
 @pytest.mark.asyncio
 async def test_grpc_set_returns_specific_resource_exhausted_reasons():
     store = CacheStore(
