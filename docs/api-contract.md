@@ -146,7 +146,7 @@ Endpoints:
   - `200` Prometheus text-format metrics
 - `GET /stats`
   - `200` JSON with the gRPC `CacheStats` fields (`size`, `hits`, `misses`, `evictions`, `hit_rate`, `memory_usage_bytes`, `max_memory_bytes`, `max_items`)
-  - Also includes HTTP-only fields: `memory_usage_mb`, `max_memory_mb`, `uptime_seconds`, `active_requests`, `timestamp`
+  - Also includes HTTP-only fields: `memory_usage_mb`, `max_memory_mb`, `max_value_bytes`, `uptime_seconds`, `active_requests`, `timestamp`
   - This payload is intentionally not a byte-for-byte mirror of the protobuf schema
   - `503` JSON on error
 - `GET /`

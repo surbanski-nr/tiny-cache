@@ -522,6 +522,7 @@ class TestCacheStore:
         assert stats.memory_usage_bytes == 0
         assert stats.max_memory_bytes == self.cache.max_memory_bytes
         assert stats.max_memory_mb >= 0
+        assert stats.max_value_bytes == self.cache.max_value_bytes
         assert stats.max_items == self.cache.max_items
 
         # Add some data and test operations

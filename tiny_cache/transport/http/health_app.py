@@ -88,6 +88,14 @@ class HealthCheckHandler:
             stats = await asyncio.to_thread(self._app.stats)
             uptime = time.monotonic() - self._start_time
 
+            item_saturation_ratio = (
+                stats.size / stats.max_items if stats.max_items > 0 else 0.0
+            )
+            memory_saturation_ratio = (
+                stats.memory_usage_bytes / stats.max_memory_bytes
+                if stats.max_memory_bytes > 0
+                else 0.0
+            )
             lines = [
                 "# HELP tiny_cache_hits_total Total cache hits",
                 "# TYPE tiny_cache_hits_total counter",
@@ -104,6 +112,21 @@ class HealthCheckHandler:
                 "# HELP tiny_cache_memory_usage_bytes Current memory usage in bytes (best-effort)",
                 "# TYPE tiny_cache_memory_usage_bytes gauge",
                 f"tiny_cache_memory_usage_bytes {int(stats.memory_usage_bytes)}",
+                "# HELP tiny_cache_capacity_max_items Configured cache item capacity",
+                "# TYPE tiny_cache_capacity_max_items gauge",
+                f"tiny_cache_capacity_max_items {int(stats.max_items)}",
+                "# HELP tiny_cache_capacity_max_memory_bytes Configured cache memory capacity in bytes",
+                "# TYPE tiny_cache_capacity_max_memory_bytes gauge",
+                f"tiny_cache_capacity_max_memory_bytes {int(stats.max_memory_bytes)}",
+                "# HELP tiny_cache_capacity_max_value_bytes Configured maximum value size in bytes",
+                "# TYPE tiny_cache_capacity_max_value_bytes gauge",
+                f"tiny_cache_capacity_max_value_bytes {int(stats.max_value_bytes)}",
+                "# HELP tiny_cache_capacity_item_saturation_ratio Entry count divided by max_items",
+                "# TYPE tiny_cache_capacity_item_saturation_ratio gauge",
+                f"tiny_cache_capacity_item_saturation_ratio {item_saturation_ratio}",
+                "# HELP tiny_cache_capacity_memory_saturation_ratio Memory usage divided by max_memory_bytes",
+                "# TYPE tiny_cache_capacity_memory_saturation_ratio gauge",
+                f"tiny_cache_capacity_memory_saturation_ratio {memory_saturation_ratio}",
                 "# HELP tiny_cache_active_requests Current in-flight gRPC requests",
                 "# TYPE tiny_cache_active_requests gauge",
                 f"tiny_cache_active_requests {int(self._active_requests.value)}",

@@ -93,6 +93,11 @@ async def test_health_endpoints_ok():
                 assert "tiny_cache_misses_total 0" in metrics
                 assert "tiny_cache_evictions_total 0" in metrics
                 assert "tiny_cache_entries 0" in metrics
+                assert "tiny_cache_capacity_max_items 10" in metrics
+                assert "tiny_cache_capacity_max_memory_bytes 1048576" in metrics
+                assert "tiny_cache_capacity_max_value_bytes 1048576" in metrics
+                assert "tiny_cache_capacity_item_saturation_ratio 0.0" in metrics
+                assert "tiny_cache_capacity_memory_saturation_ratio 0.0" in metrics
 
             async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
                 assert resp.status == 200
@@ -109,6 +114,7 @@ async def test_health_endpoints_ok():
                 assert payload["memory_usage_mb"] == 0.0
                 assert payload["max_memory_bytes"] == 1024 * 1024
                 assert payload["max_memory_mb"] == 1.0
+                assert payload["max_value_bytes"] == 1024 * 1024
                 assert payload["max_items"] == 10
                 assert payload["active_requests"] == 0
                 assert isinstance(payload["uptime_seconds"], (int, float))
@@ -161,6 +167,11 @@ async def test_stats_and_metrics_exclude_expired_entries():
                 assert resp.status == 200
                 metrics = await resp.text()
                 assert "tiny_cache_entries 0" in metrics
+                assert "tiny_cache_capacity_max_items 10" in metrics
+                assert "tiny_cache_capacity_max_memory_bytes 1048576" in metrics
+                assert "tiny_cache_capacity_max_value_bytes 1048576" in metrics
+                assert "tiny_cache_capacity_item_saturation_ratio 0.0" in metrics
+                assert "tiny_cache_capacity_memory_saturation_ratio 0.0" in metrics
                 assert "tiny_cache_memory_usage_bytes 0" in metrics
     finally:
         await runner.cleanup()

@@ -197,6 +197,7 @@ class CacheStore:
                 memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
                 max_memory_bytes=self.max_memory_bytes,
                 max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
+                max_value_bytes=self.max_value_bytes,
                 max_items=self.max_items,
             )
 

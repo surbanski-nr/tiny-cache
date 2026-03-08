@@ -22,6 +22,7 @@ class CacheStatsSnapshot:
     memory_usage_mb: float
     max_memory_bytes: int
     max_memory_mb: float
+    max_value_bytes: int
     max_items: int
 
     def to_dict(self) -> dict[str, int | float]:
@@ -35,6 +36,7 @@ class CacheStatsSnapshot:
             "memory_usage_mb": self.memory_usage_mb,
             "max_memory_bytes": self.max_memory_bytes,
             "max_memory_mb": self.max_memory_mb,
+            "max_value_bytes": self.max_value_bytes,
             "max_items": self.max_items,
         }
 
