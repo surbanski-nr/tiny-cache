@@ -265,8 +265,6 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 "STATS", "", state.client_addr, state.duration_ms(), result
             )
 
-            max_memory_bytes = int(getattr(self._app.store, "max_memory_bytes", 0))
-            max_items = int(getattr(self._app.store, "max_items", 0))
             return cache_pb2.CacheStats(
                 size=stats.size,
                 hits=stats.hits,
@@ -274,8 +272,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 evictions=stats.evictions,
                 hit_rate=stats.hit_rate,
                 memory_usage_bytes=stats.memory_usage_bytes,
-                max_memory_bytes=max_memory_bytes,
-                max_items=max_items,
+                max_memory_bytes=stats.max_memory_bytes,
+                max_items=stats.max_items,
             )
         except Exception:
             self._handle_internal_error(

@@ -103,7 +103,16 @@ async def test_health_endpoints_ok():
                 assert payload["size"] == 0
                 assert payload["hits"] == 0
                 assert payload["misses"] == 0
+                assert payload["evictions"] == 0
+                assert payload["hit_rate"] == 0.0
+                assert payload["memory_usage_bytes"] == 0
+                assert payload["memory_usage_mb"] == 0.0
+                assert payload["max_memory_bytes"] == 1024 * 1024
+                assert payload["max_memory_mb"] == 1.0
+                assert payload["max_items"] == 10
                 assert payload["active_requests"] == 0
+                assert isinstance(payload["uptime_seconds"], (int, float))
+                assert isinstance(payload["timestamp"], (int, float))
 
             async with session.get(f"http://127.0.0.1:{port}/") as resp:
                 assert resp.status == 200

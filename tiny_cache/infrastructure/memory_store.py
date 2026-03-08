@@ -211,6 +211,7 @@ class CacheStore:
                 hit_rate=self.hits / total if total > 0 else 0,
                 memory_usage_bytes=self.current_memory_bytes,
                 memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
+                max_memory_bytes=self.max_memory_bytes,
                 max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
                 max_items=self.max_items,
             )

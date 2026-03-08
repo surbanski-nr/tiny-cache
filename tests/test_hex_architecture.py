@@ -655,6 +655,7 @@ async def test_health_handler_liveness_error_path(monkeypatch):
                 hit_rate=0.0,
                 memory_usage_bytes=0,
                 memory_usage_mb=0.0,
+                max_memory_bytes=0,
                 max_memory_mb=0.0,
                 max_items=0,
             )

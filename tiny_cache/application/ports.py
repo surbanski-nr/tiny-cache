@@ -20,6 +20,7 @@ class CacheStatsSnapshot:
     hit_rate: float
     memory_usage_bytes: int
     memory_usage_mb: float
+    max_memory_bytes: int
     max_memory_mb: float
     max_items: int
 
@@ -32,6 +33,7 @@ class CacheStatsSnapshot:
             "hit_rate": self.hit_rate,
             "memory_usage_bytes": self.memory_usage_bytes,
             "memory_usage_mb": self.memory_usage_mb,
+            "max_memory_bytes": self.max_memory_bytes,
             "max_memory_mb": self.max_memory_mb,
             "max_items": self.max_items,
         }
