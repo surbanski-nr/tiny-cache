@@ -13,6 +13,17 @@ from tiny_cache.transport.http.health_app import create_health_app
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
+class FakeClock:
+    def __init__(self, initial: float = 0.0):
+        self.now = float(initial)
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 async def _start_app(app: web.Application) -> tuple[web.AppRunner, int]:
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
@@ -103,6 +114,41 @@ async def test_health_endpoints_ok():
                 assert "/live" in payload["endpoints"]
                 assert "/stats" in payload["endpoints"]
                 assert isinstance(payload["grpc_port"], int)
+    finally:
+        await runner.cleanup()
+        cache_store.stop()
+
+
+async def test_stats_and_metrics_exclude_expired_entries():
+    clock = FakeClock()
+    cache_store = CacheStore(
+        max_items=10,
+        max_memory_mb=1,
+        cleanup_interval=3600,
+        clock=clock,
+        start_cleaner=False,
+    )
+    cache_app = CacheApplicationService(cache_store)
+    active_requests = ActiveRequests()
+    app = await create_health_app(cache_app, active_requests, grpc_port=0)
+
+    assert cache_store.set("expiring", b"value", ttl=1).value == "ok"
+    clock.advance(1.0)
+
+    runner, port = await _start_app(app)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://127.0.0.1:{port}/stats") as resp:
+                assert resp.status == 200
+                payload = await resp.json()
+                assert payload["size"] == 0
+                assert payload["memory_usage_bytes"] == 0
+
+            async with session.get(f"http://127.0.0.1:{port}/metrics") as resp:
+                assert resp.status == 200
+                metrics = await resp.text()
+                assert "tiny_cache_entries 0" in metrics
+                assert "tiny_cache_memory_usage_bytes 0" in metrics
     finally:
         await runner.cleanup()
         cache_store.stop()

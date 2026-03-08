@@ -412,6 +412,40 @@ class TestCacheStore:
 
         cache.stop()
 
+    def test_stats_exclude_expired_entries(self):
+        """Test stats remove expired entries before reporting size and memory."""
+
+        class FakeClock:
+            def __init__(self):
+                self.now = 0.0
+
+            def __call__(self):
+                return self.now
+
+            def advance(self, seconds: float):
+                self.now += seconds
+
+        clock = FakeClock()
+        cache = CacheStore(
+            max_items=10,
+            max_memory_mb=1,
+            cleanup_interval=3600,
+            clock=clock,
+            start_cleaner=False,
+        )
+
+        assert cache.set("expiring", b"value", ttl=1) is CacheSetStatus.OK
+        clock.advance(1.0)
+
+        stats = cache.stats()
+
+        assert stats["size"] == 0
+        assert stats["memory_usage_bytes"] == 0
+        assert cache.get("expiring") is None
+
+        cache.stop()
+
+
     def test_clear_cache(self):
         """Test clearing the entire cache."""
         # Add some items
@@ -529,8 +563,12 @@ class TestCacheStore:
         # Verify item exists
         assert cache.get("expire_key") == "expire_value"
 
-        # Wait for cleanup to run
-        time.sleep(1)
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            with cache.lock:
+                if "expire_key" not in cache.store:
+                    break
+            time.sleep(0.05)
 
         # Item should be cleaned up by background thread
         # Note: We check the store directly since get() also removes expired items

@@ -162,6 +162,13 @@ class CacheStore:
             entry = self.store.pop(key)
             self.current_memory_bytes -= entry.size_bytes
 
+    def _remove_expired_entries_locked(self) -> None:
+        expired_keys = [
+            key for key, entry in self.store.items() if self._is_expired(entry)
+        ]
+        for key in expired_keys:
+            self._remove_entry(key)
+
     def _evict_lru(self) -> bool:
         if not self.store:
             return False
@@ -182,6 +189,7 @@ class CacheStore:
 
     def stats(self) -> dict[str, Any]:
         with self.lock:
+            self._remove_expired_entries_locked()
             total = self.hits + self.misses
             return {
                 "size": len(self.store),

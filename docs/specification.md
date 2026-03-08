@@ -122,6 +122,7 @@ Behavior:
 - `hits`, `misses`
 - `evictions`
 - `current_memory_bytes` (best-effort)
+- `CacheStore.stats()` purges expired entries before reporting size and memory usage in the current in-memory backend
 
 gRPC `Stats` returns:
 
