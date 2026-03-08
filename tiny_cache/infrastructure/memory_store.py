@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 import time
 from collections import OrderedDict
 from threading import Event, Lock, Thread
@@ -9,35 +8,24 @@ from typing import Callable
 
 from tiny_cache.application.ports import CacheSetStatus, CacheStatsSnapshot
 from tiny_cache.domain.validation import validate_key, validate_value
-
-DEFAULT_MAX_ITEMS = 1000
-DEFAULT_MAX_MEMORY_MB = 100
-DEFAULT_CLEANUP_INTERVAL = 10
+from tiny_cache.infrastructure.memory_store_cleanup import ExpiredEntryCleaner
+from tiny_cache.infrastructure.memory_store_models import (
+    DEFAULT_CLEANUP_INTERVAL,
+    DEFAULT_MAX_ITEMS,
+    DEFAULT_MAX_MEMORY_MB,
+    CacheEntry,
+    CacheStoreLimits,
+)
 
 logger = logging.getLogger(__name__)
 
-
-class CacheEntry:
-    def __init__(
-        self,
-        value: bytes,
-        ttl: int | None = None,
-        created_at: float | None = None,
-    ):
-        self._value = b""
-        self.value = value
-        self.ttl = None if ttl is not None and ttl <= 0 else ttl
-        self.created_at = created_at if created_at is not None else time.monotonic()
-
-    @property
-    def value(self) -> bytes:
-        return self._value
-
-    @value.setter
-    def value(self, value: bytes) -> None:
-        validate_value(value)
-        self._value = value
-        self.size_bytes = sys.getsizeof(value)
+__all__ = [
+    "CacheEntry",
+    "CacheStore",
+    "DEFAULT_MAX_ITEMS",
+    "DEFAULT_MAX_MEMORY_MB",
+    "DEFAULT_CLEANUP_INTERVAL",
+]
 
 
 class CacheStore:
@@ -50,39 +38,17 @@ class CacheStore:
         start_cleaner: bool = True,
         clock: Callable[[], float] | None = None,
     ):
-        resolved_max_items = DEFAULT_MAX_ITEMS if max_items is None else max_items
-        if resolved_max_items < 1:
-            raise ValueError(f"max_items must be >= 1, got {resolved_max_items}")
-
-        resolved_max_memory_mb = (
-            DEFAULT_MAX_MEMORY_MB if max_memory_mb is None else max_memory_mb
+        limits = CacheStoreLimits.resolve(
+            max_items=max_items,
+            max_memory_mb=max_memory_mb,
+            cleanup_interval=cleanup_interval,
+            max_value_bytes=max_value_bytes,
         )
-        if resolved_max_memory_mb < 1:
-            raise ValueError(
-                f"max_memory_mb must be >= 1, got {resolved_max_memory_mb}"
-            )
 
-        resolved_cleanup_interval = (
-            DEFAULT_CLEANUP_INTERVAL if cleanup_interval is None else cleanup_interval
-        )
-        if resolved_cleanup_interval < 1:
-            raise ValueError(
-                f"cleanup_interval must be >= 1, got {resolved_cleanup_interval}"
-            )
-
-        self.max_items = resolved_max_items
-        self.max_memory_bytes = resolved_max_memory_mb * 1024 * 1024
-
-        resolved_max_value_bytes = (
-            self.max_memory_bytes if max_value_bytes is None else max_value_bytes
-        )
-        if resolved_max_value_bytes < 1:
-            raise ValueError(
-                f"max_value_bytes must be >= 1, got {resolved_max_value_bytes}"
-            )
-        self.max_value_bytes = min(resolved_max_value_bytes, self.max_memory_bytes)
-
-        self.cleanup_interval = resolved_cleanup_interval
+        self.max_items = limits.max_items
+        self.max_memory_bytes = limits.max_memory_bytes
+        self.max_value_bytes = limits.max_value_bytes
+        self.cleanup_interval = limits.cleanup_interval
 
         self.store: OrderedDict[str, CacheEntry] = OrderedDict()
         self.current_memory_bytes = 0
@@ -93,9 +59,17 @@ class CacheStore:
         self._clock = clock or time.monotonic
 
         self._stop_event = Event()
+        self._cleaner = ExpiredEntryCleaner(
+            stop_event=self._stop_event,
+            cleanup_interval=self.cleanup_interval,
+            snapshot_items=self._snapshot_items,
+            remove_if_expired=self._remove_if_expired,
+            is_expired=self._is_expired,
+            logger=logger,
+        )
         self.cleaner_thread: Thread | None = None
         if start_cleaner:
-            self.cleaner_thread = Thread(target=self._background_cleanup, daemon=True)
+            self.cleaner_thread = Thread(target=self._cleaner.run, daemon=True)
             self.cleaner_thread.start()
 
     def __enter__(self):
@@ -181,6 +155,16 @@ class CacheStore:
         for key in expired_keys:
             self._remove_entry(key)
 
+    def _snapshot_items(self) -> list[tuple[str, CacheEntry]]:
+        with self.lock:
+            return list(self.store.items())
+
+    def _remove_if_expired(self, key: str) -> None:
+        with self.lock:
+            entry = self.store.get(key)
+            if entry is not None and self._is_expired(entry):
+                self._remove_entry(key)
+
     def _evict_lru(self) -> bool:
         if not self.store:
             return False
@@ -215,24 +199,6 @@ class CacheStore:
                 max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
                 max_items=self.max_items,
             )
-
-    def _background_cleanup(self) -> None:
-        while not self._stop_event.wait(self.cleanup_interval):
-            try:
-                with self.lock:
-                    items = list(self.store.items())
-
-                expired_keys = [key for key, entry in items if self._is_expired(entry)]
-                if not expired_keys:
-                    continue
-
-                with self.lock:
-                    for key in expired_keys:
-                        entry = self.store.get(key)
-                        if entry is not None and self._is_expired(entry):
-                            self._remove_entry(key)
-            except Exception:
-                logger.exception("Error in background cleanup")
 
     def clear(self) -> None:
         with self.lock:
