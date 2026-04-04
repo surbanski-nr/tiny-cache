@@ -36,7 +36,10 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 - `tiny_cache/main.py`: process composition root; wires and starts transports
 - `cache.proto`: gRPC schema (canonical API definition)
 - `cache_pb2.py`, `cache_pb2_grpc.py`: generated stubs (not tracked; produced via `task gen`)
-- `tests/`: unit + integration tests
+- `tests/unit/`: domain, application, infrastructure, transport, and composition tests
+- `tests/integration/app/`: in-process gRPC, HTTP, TLS, and CLI behavior tests
+- `tests/integration/infra/`: SQLite-backed adapter and backend contract tests
+- `tests/concurrency/`: parallel access tests for lock and consistency behavior
 - `Dockerfile`, `docker-compose.yml`, `docs/kubernetes-deployment.yaml`: containerization and deployment
 
 ## Runtime Components

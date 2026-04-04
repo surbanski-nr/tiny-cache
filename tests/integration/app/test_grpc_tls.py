@@ -15,8 +15,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 async def test_grpc_tls_set_get_roundtrip():
-    cert_path = Path(__file__).resolve().parents[1] / "fixtures" / "tls" / "server.crt"
-    key_path = Path(__file__).resolve().parents[1] / "fixtures" / "tls" / "server.key"
+    cert_path = Path(__file__).resolve().parents[2] / "fixtures" / "tls" / "server.crt"
+    key_path = Path(__file__).resolve().parents[2] / "fixtures" / "tls" / "server.key"
 
     cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
     cache_app = CacheApplicationService(cache_store)

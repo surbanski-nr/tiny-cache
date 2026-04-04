@@ -6,7 +6,7 @@ This document is a quick orientation guide to the repository. For behavior detai
 
 - A gRPC cache service (transport adapter under `tiny_cache/transport/grpc/`) backed by an in-memory store (`tiny_cache/infrastructure/memory_store.py`)
 - Protobuf schema (`cache.proto`) and generated Python stubs (generated via `task gen`)
-- Unit + integration tests (`tests/`)
+- Layered tests under `tests/unit/`, `tests/integration/`, and `tests/concurrency/`
 - Container and deployment manifests (Docker, one reusable Compose stack, Kubernetes example)
 
 Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally not tracked and are produced via `task gen`.
@@ -14,8 +14,8 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 ## Local Development Workflow
 
 - Use `uv sync` to create and manage `.venv/`
-- Use `uv run ...` for local commands so tooling always runs inside the managed environment
-- Regenerate protobuf stubs with `uv run task gen` after changing `cache.proto`
+- Use `uv run ...` for Python tools and `task ...` for Taskfile targets
+- Regenerate protobuf stubs with `task gen` after changing `cache.proto`
 
 ## How Requests Flow
 
@@ -53,11 +53,12 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
 
 ## Development Entry Points
 
-- Generate protobuf stubs: `uv run task gen`
+- Generate protobuf stubs: `task gen`
 - Run locally: `uv run python -m tiny_cache`
 - Run tests:
-  - Unit: `uv run pytest -m unit`
-  - Integration: `uv run pytest -m integration`
+  - Unit: `task test-unit`
+  - Integration: `task test-integration`
+  - Concurrency: `task test-concurrency`
   - Coverage: `uv run pytest --cov=tiny_cache --cov-report=term-missing`
 - Compose test-style stack: `CACHE_PORT_HOST=50061 CACHE_HEALTH_PORT_HOST=58081 docker-compose -p tiny-cache-test-deps up -d` (isolated project name, safe to run alongside the main stack)
 - Rebuild container locally:
@@ -67,9 +68,9 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
   - `docker-compose logs --tail=200 cache-service`
 
 - Code quality:
-  - Lint: `uv run task lint`
-  - Format: `uv run task format`
-  - Typecheck: `uv run task typecheck`
+  - Lint: `task lint`
+  - Format: `task format`
+  - Typecheck: `task typecheck`
 
 ## Related Documents
 

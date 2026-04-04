@@ -2,27 +2,30 @@
 
 ## Prerequisites
 
-Use `uv sync` and `uv run` as the canonical local workflow. The managed environment is `.venv/`.
+Use `uv sync` for the environment, `uv run` for Python tools, and `task` for Taskfile targets. The managed environment is `.venv/`.
 
 ```bash
 # Install uv: https://docs.astral.sh/uv/
 uv sync
 
 # Install task runner (Taskfile): https://taskfile.dev
-uv run task gen
+task gen
 ```
 
 ## Run Tests
 
 ```bash
 # One-command happy path
-uv run task test
+task test
 
 # Unit tests
-uv run pytest -m unit
+task test-unit
 
-# Integration tests (in-process gRPC + aiohttp)
-uv run pytest -m integration
+# Integration tests
+task test-integration
+
+# Concurrency tests
+task test-concurrency
 
 # Everything
 uv run pytest

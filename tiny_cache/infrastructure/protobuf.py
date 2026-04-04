@@ -16,7 +16,7 @@ def ensure_generated_protobuf_modules(project_root: Path | None = None) -> None:
     if missing_files:
         missing = ", ".join(missing_files)
         raise RuntimeError(
-            f"Missing generated protobuf files: {missing}. Run `uv run task gen`."
+            f"Missing generated protobuf files: {missing}. Run `task gen`."
         )
 
 

@@ -27,7 +27,7 @@ uv sync
 # Install task runner (Taskfile): https://taskfile.dev
 
 # Generate protobuf files
-uv run task gen
+task gen
 
 # Start server
 uv run python -m tiny_cache
@@ -92,7 +92,7 @@ The service implements the following gRPC methods:
 The repo includes a small CLI client for quick manual testing:
 
 ```bash
-uv run task gen
+task gen
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 set greeting hello --ttl 60
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 get greeting --format utf8
 uv run python -m tiny_cache.cli --target 127.0.0.1:50051 stats
@@ -105,15 +105,20 @@ uv run python -m tiny_cache.cli --target 127.0.0.1:50051 stats
 uv sync
 
 # Generate protobuf stubs
-uv run task gen
+task gen
 
-# Run tests with coverage
+# Run tests by layer
+task test-unit
+task test-integration
+task test-concurrency
+
+# Run everything with coverage
 uv run pytest --cov=tiny_cache --cov-report=term-missing
 
 # Lint/format/typecheck
-uv run task lint
-uv run task format
-uv run task typecheck
+task lint
+task format
+task typecheck
 ```
 
 ## License

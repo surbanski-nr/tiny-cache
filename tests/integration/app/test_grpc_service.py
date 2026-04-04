@@ -10,7 +10,6 @@ import cache_pb2_grpc
 from tiny_cache.application.ports import CacheStoreLifecyclePort
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.memory_store import CacheStore
-from tiny_cache.infrastructure.sqlite_store import SqliteCacheStore
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
@@ -356,34 +355,6 @@ async def test_stats_reports_size_hits_misses(grpc_server):
     assert stats.hit_rate == pytest.approx(0.5)
     assert stats.memory_usage_bytes > 0
     assert stats.memory_usage_bytes <= stats.max_memory_bytes
-
-
-async def test_sqlite_backend_matches_grpc_contract(grpc_server, tmp_path):
-    cache_store = SqliteCacheStore(
-        db_path=str(tmp_path / "cache.sqlite3"),
-        max_items=10,
-        max_memory_mb=1,
-        cleanup_interval=3600,
-        start_cleaner=False,
-    )
-    stub, _service = await grpc_server(cache_store)
-
-    response = await stub.Set(cache_pb2.CacheItem(key="k", value=b"v1", ttl=0))
-    assert response.status == cache_pb2.CacheStatus.OK
-
-    response = await stub.CompareAndSet(
-        cache_pb2.CompareAndSetRequest(
-            key="k", expected_value=b"v1", value=b"v2", ttl=0
-        )
-    )
-    assert response.status == cache_pb2.STORED
-
-    response = await stub.SetIfAbsent(cache_pb2.CacheItem(key="k", value=b"v3", ttl=0))
-    assert response.status == cache_pb2.EXISTS
-
-    value = await stub.Get(cache_pb2.CacheKey(key="k"))
-    assert value.found is True
-    assert value.value == b"v2"
 
 
 async def test_internal_error_includes_request_id(grpc_server):

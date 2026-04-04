@@ -18,10 +18,30 @@ tasks:
       - python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
 
   test:
-    desc: Run unit + integration tests
+    desc: Run unit, integration, and concurrency tests
     deps: [gen]
     cmds:
-      - uv run pytest
+      - uv run pytest tests/unit
+      - uv run pytest tests/integration
+      - uv run pytest tests/concurrency
+
+  test-unit:
+    desc: Run unit tests
+    deps: [gen]
+    cmds:
+      - uv run pytest tests/unit
+
+  test-integration:
+    desc: Run integration tests
+    deps: [gen]
+    cmds:
+      - uv run pytest tests/integration
+
+  test-concurrency:
+    desc: Run concurrency tests
+    deps: [gen]
+    cmds:
+      - uv run pytest tests/concurrency
 
   format:
     desc: Auto-format code (ruff)
