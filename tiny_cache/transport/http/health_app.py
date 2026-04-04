@@ -8,13 +8,14 @@ from typing import Protocol
 
 from aiohttp import web
 
-from tiny_cache.application.ports import CacheStatsSnapshot
-from tiny_cache.application.request_context import request_id_var
+from tiny_cache.application.results import CacheStatsSnapshot
+from tiny_cache.request_context import request_id_var
 from tiny_cache.transport.active_requests import ActiveRequests
 
 logger = logging.getLogger(__name__)
 SERVICE_UNAVAILABLE_MESSAGE = "Service unavailable"
 PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4"
+BYTES_PER_MEGABYTE = 1024 * 1024
 
 
 def _json_response(payload: dict[str, object], *, status: int = 200) -> web.Response:
@@ -26,6 +27,38 @@ def _service_unavailable_response() -> web.Response:
         {"status": "error", "message": SERVICE_UNAVAILABLE_MESSAGE},
         status=503,
     )
+
+
+def _megabytes(value_bytes: int) -> float:
+    return round(value_bytes / BYTES_PER_MEGABYTE, 2)
+
+
+def _stats_payload(
+    stats: CacheStatsSnapshot,
+    *,
+    active_requests: int,
+    uptime_seconds: float,
+) -> dict[str, object]:
+    return {
+        "size": stats.size,
+        "hits": stats.hits,
+        "misses": stats.misses,
+        "evictions": stats.evictions,
+        "lru_evictions": stats.lru_evictions,
+        "expired_removals": stats.expired_removals,
+        "rejected_oversize": stats.rejected_oversize,
+        "rejected_capacity": stats.rejected_capacity,
+        "hit_rate": stats.hit_rate,
+        "memory_usage_bytes": stats.memory_usage_bytes,
+        "memory_usage_mb": _megabytes(stats.memory_usage_bytes),
+        "max_memory_bytes": stats.max_memory_bytes,
+        "max_memory_mb": _megabytes(stats.max_memory_bytes),
+        "max_value_bytes": stats.max_value_bytes,
+        "max_items": stats.max_items,
+        "uptime_seconds": round(uptime_seconds, 2),
+        "active_requests": active_requests,
+        "timestamp": time.time(),
+    }
 
 
 @web.middleware
@@ -162,15 +195,13 @@ class HealthCheckHandler:
         try:
             stats = await asyncio.to_thread(self._app.stats)
             uptime = time.monotonic() - self._start_time
-            payload = stats.to_dict()
-            payload.update(
-                {
-                    "uptime_seconds": round(uptime, 2),
-                    "active_requests": self._active_requests.value,
-                    "timestamp": time.time(),
-                }
+            return _json_response(
+                _stats_payload(
+                    stats,
+                    active_requests=self._active_requests.value,
+                    uptime_seconds=uptime,
+                )
             )
-            return _json_response(payload)
         except Exception:
             logger.exception("Stats error")
             return _service_unavailable_response()

@@ -8,7 +8,7 @@ from typing import Protocol, cast
 
 import grpc
 
-from tiny_cache.application.request_context import request_id_var
+from tiny_cache.request_context import request_id_var
 from tiny_cache.transport.active_requests import ActiveRequests
 
 logger = logging.getLogger(__name__)

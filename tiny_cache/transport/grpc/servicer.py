@@ -13,14 +13,17 @@ from grpc import StatusCode
 
 import cache_pb2
 import cache_pb2_grpc
-from tiny_cache.application.ports import (
+from tiny_cache.application.ports import CacheStorePort
+from tiny_cache.application.results import (
     CacheConditionalSetStatus,
     CacheSetStatus,
     CacheStatsSnapshot,
-    CacheStorePort,
+    CacheWriteFailure,
+    cache_write_failure_from_conditional_status,
+    cache_write_failure_from_set_status,
 )
-from tiny_cache.application.request_context import request_id_var
 from tiny_cache.domain.validation import validate_namespace
+from tiny_cache.request_context import request_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -195,11 +198,12 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         context.set_details(self._internal_error_details(state))
 
     def _set_status_details(self, set_status: CacheSetStatus) -> tuple[str, str | None]:
-        if set_status is CacheSetStatus.OK:
+        failure = cache_write_failure_from_set_status(set_status)
+        if failure is None:
             return "OK", None
-        if set_status is CacheSetStatus.VALUE_TOO_LARGE:
+        if failure is CacheWriteFailure.VALUE_TOO_LARGE:
             return "VALUE_TOO_LARGE", VALUE_TOO_LARGE_MESSAGE
-        if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
+        if failure is CacheWriteFailure.CAPACITY_EXHAUSTED:
             return "CAPACITY_EXHAUSTED", CAPACITY_EXHAUSTED_MESSAGE
         raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
 
@@ -215,13 +219,14 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
             return "NOT_FOUND", cache_pb2.NOT_FOUND, None
         if status is CacheConditionalSetStatus.MISMATCH:
             return "MISMATCH", cache_pb2.MISMATCH, None
-        if status is CacheConditionalSetStatus.VALUE_TOO_LARGE:
+        failure = cache_write_failure_from_conditional_status(status)
+        if failure is CacheWriteFailure.VALUE_TOO_LARGE:
             return (
                 "VALUE_TOO_LARGE",
                 cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,
                 VALUE_TOO_LARGE_MESSAGE,
             )
-        if status is CacheConditionalSetStatus.CAPACITY_EXHAUSTED:
+        if failure is CacheWriteFailure.CAPACITY_EXHAUSTED:
             return (
                 "CAPACITY_EXHAUSTED",
                 cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,

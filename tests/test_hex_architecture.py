@@ -15,7 +15,6 @@ from tiny_cache.application.ports import (
     CacheSetStatus,
     CacheStatsSnapshot,
 )
-from tiny_cache.application.request_context import request_id_var
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.domain.validation import (
     validate_key,
@@ -36,6 +35,7 @@ from tiny_cache.infrastructure.tls import (
     add_grpc_listen_port,
     build_tls_server_credentials,
 )
+from tiny_cache.request_context import request_id_var
 from tiny_cache.transport.active_requests import ActiveRequests
 from tiny_cache.transport.grpc.interceptors import (
     ActiveRequestsInterceptor,
@@ -944,9 +944,7 @@ async def test_health_handler_liveness_error_path(monkeypatch):
                 rejected_capacity=0,
                 hit_rate=0.0,
                 memory_usage_bytes=0,
-                memory_usage_mb=0.0,
                 max_memory_bytes=0,
-                max_memory_mb=0.0,
                 max_value_bytes=0,
                 max_items=0,
             )

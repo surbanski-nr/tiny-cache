@@ -336,16 +336,10 @@ class TestCacheStore:
     def test_set_if_absent_stores_only_when_key_is_missing(self):
         cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)
 
-        assert (
-            cache.set_if_absent("key", b"value1")
-            is CacheConditionalSetStatus.STORED
-        )
+        assert cache.set_if_absent("key", b"value1") is CacheConditionalSetStatus.STORED
         assert cache.get("key") == b"value1"
 
-        assert (
-            cache.set_if_absent("key", b"value2")
-            is CacheConditionalSetStatus.EXISTS
-        )
+        assert cache.set_if_absent("key", b"value2") is CacheConditionalSetStatus.EXISTS
         assert cache.get("key") == b"value1"
 
         cache.stop()
@@ -595,7 +589,6 @@ class TestCacheStore:
         assert stats.hit_rate == 0
         assert stats.memory_usage_bytes == 0
         assert stats.max_memory_bytes == self.cache.max_memory_bytes
-        assert stats.max_memory_mb >= 0
         assert stats.max_value_bytes == self.cache.max_value_bytes
         assert stats.max_items == self.cache.max_items
 
@@ -617,8 +610,7 @@ class TestCacheStore:
         eviction_cache.set("second", b"value2")
         eviction_cache.max_value_bytes = 100
         assert (
-            eviction_cache.set("too_big", b"x" * 128)
-            is CacheSetStatus.VALUE_TOO_LARGE
+            eviction_cache.set("too_big", b"x" * 128) is CacheSetStatus.VALUE_TOO_LARGE
         )
 
         capacity_cache = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=10)

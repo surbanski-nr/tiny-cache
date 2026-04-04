@@ -48,6 +48,9 @@ docker-compose logs --tail=200 cache-service
 # - gRPC: 127.0.0.1:50051
 # - HTTP health/metrics: 127.0.0.1:58080 (container listens on 8080)
 curl -fsS "http://127.0.0.1:${CACHE_HEALTH_PORT_HOST:-58080}/health"
+
+# Optional parallel stack using the same compose file
+CACHE_PORT_HOST=50061 CACHE_HEALTH_PORT_HOST=58081 docker-compose -p tiny-cache-test-deps up -d
 ```
 
 ## Configuration

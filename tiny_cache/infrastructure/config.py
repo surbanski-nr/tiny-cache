@@ -31,7 +31,6 @@ def get_env_int(
     return value
 
 
-
 def get_env_choice(
     env_name: str,
     default_value: str,

@@ -30,14 +30,17 @@ uv run pytest
 
 ## Compose-Based Test Stack
 
-Use the compose test stack when you want a long-lived local dependency environment outside the in-process pytest fixtures. It runs as an isolated Compose project so it can stay up alongside the main local stack.
+Use the main compose file when you want a long-lived local dependency environment outside the in-process pytest fixtures. Run it as an isolated Compose project with alternate host ports so it can stay up alongside the main local stack.
 
 ```bash
-docker-compose -f docker-compose.test-deps.yml down -v || true
-docker-compose -f docker-compose.test-deps.yml build --no-cache
-docker-compose -f docker-compose.test-deps.yml up -d
+export CACHE_PORT_HOST="${CACHE_TEST_PORT_HOST:-50061}"
+export CACHE_HEALTH_PORT_HOST="${CACHE_TEST_HEALTH_PORT_HOST:-58081}"
 
-docker-compose -f docker-compose.test-deps.yml logs --tail=200 cache-service
+docker-compose -p tiny-cache-test-deps down -v || true
+docker-compose -p tiny-cache-test-deps build --no-cache
+docker-compose -p tiny-cache-test-deps up -d
+
+docker-compose -p tiny-cache-test-deps logs --tail=200 cache-service
 curl -fsS "http://127.0.0.1:${CACHE_TEST_HEALTH_PORT_HOST:-58081}/health"
 ```
 

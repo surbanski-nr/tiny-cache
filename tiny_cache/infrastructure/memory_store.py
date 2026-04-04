@@ -6,10 +6,11 @@ from collections import OrderedDict
 from threading import Event, Lock, Thread
 from typing import Callable
 
-from tiny_cache.application.ports import (
+from tiny_cache.application.results import (
     CacheConditionalSetStatus,
     CacheSetStatus,
     CacheStatsSnapshot,
+    conditional_status_from_set_status,
 )
 from tiny_cache.domain.validation import validate_key, validate_value
 from tiny_cache.infrastructure.memory_store_cleanup import ExpiredEntryCleaner
@@ -131,17 +132,6 @@ class CacheStore:
         self.store.move_to_end(key)
         return CacheSetStatus.OK
 
-    def _conditional_status_from_set(
-        self, set_status: CacheSetStatus
-    ) -> CacheConditionalSetStatus:
-        if set_status is CacheSetStatus.OK:
-            return CacheConditionalSetStatus.STORED
-        if set_status is CacheSetStatus.VALUE_TOO_LARGE:
-            return CacheConditionalSetStatus.VALUE_TOO_LARGE
-        if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
-            return CacheConditionalSetStatus.CAPACITY_EXHAUSTED
-        raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
-
     def get(self, key: str) -> bytes | None:
         validate_key(key)
         with self.lock:
@@ -178,7 +168,7 @@ class CacheStore:
                     self._remove_expired_entry(key)
                 else:
                     return CacheConditionalSetStatus.EXISTS
-            return self._conditional_status_from_set(
+            return conditional_status_from_set_status(
                 self._store_value_locked(key, value, ttl, None)
             )
 
@@ -203,7 +193,7 @@ class CacheStore:
                 return CacheConditionalSetStatus.MISMATCH
 
             old_entry = self.store.pop(key)
-            return self._conditional_status_from_set(
+            return conditional_status_from_set_status(
                 self._store_value_locked(key, value, ttl, old_entry)
             )
 
@@ -276,9 +266,7 @@ class CacheStore:
                 rejected_capacity=self.rejected_capacity,
                 hit_rate=self.hits / total if total > 0 else 0,
                 memory_usage_bytes=self.current_memory_bytes,
-                memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
                 max_memory_bytes=self.max_memory_bytes,
-                max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
                 max_value_bytes=self.max_value_bytes,
                 max_items=self.max_items,
             )

@@ -28,10 +28,11 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 ## Repository Layout
 
 - `tiny_cache/domain/`: domain constraints and validation
-- `tiny_cache/application/`: use-cases and ports
+- `tiny_cache/application/`: use-cases, port contracts, and application result types
 - `tiny_cache/transport/grpc/`: gRPC adapter
 - `tiny_cache/transport/http/`: HTTP health/metrics adapter
 - `tiny_cache/infrastructure/`: cache backends, env parsing, logging, TLS helpers
+- `tiny_cache/request_context.py`: shared request correlation context
 - `tiny_cache/main.py`: process composition root; wires and starts transports
 - `cache.proto`: gRPC schema (canonical API definition)
 - `cache_pb2.py`, `cache_pb2_grpc.py`: generated stubs (not tracked; produced via `task gen`)

@@ -7,7 +7,7 @@ This document is a quick orientation guide to the repository. For behavior detai
 - A gRPC cache service (transport adapter under `tiny_cache/transport/grpc/`) backed by an in-memory store (`tiny_cache/infrastructure/memory_store.py`)
 - Protobuf schema (`cache.proto`) and generated Python stubs (generated via `task gen`)
 - Unit + integration tests (`tests/`)
-- Container and deployment manifests (Docker, main compose stack, compose test stack, Kubernetes example)
+- Container and deployment manifests (Docker, one reusable Compose stack, Kubernetes example)
 
 Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally not tracked and are produced via `task gen`.
 
@@ -36,6 +36,10 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
   - Selects the configured backend adapter from validated settings.
 - `tiny_cache/application/ports.py`
   - Cache backend port (`CacheStorePort`) implemented by infrastructure backends.
+- `tiny_cache/application/results.py`
+  - Application-level result and stats DTOs used by the service, backends, and transports.
+- `tiny_cache/request_context.py`
+  - Shared request id context used by transports and logging.
 - `tiny_cache/transport/grpc/servicer.py`
   - gRPC adapter (`GrpcCacheService`)
 - `tiny_cache/transport/http/health_app.py`
@@ -55,7 +59,7 @@ Generated protobuf stubs (`cache_pb2.py`, `cache_pb2_grpc.py`) are intentionally
   - Unit: `uv run pytest -m unit`
   - Integration: `uv run pytest -m integration`
   - Coverage: `uv run pytest --cov=tiny_cache --cov-report=term-missing`
-- Compose test stack: `docker-compose -f docker-compose.test-deps.yml up -d` (isolated project name, safe to run alongside the main stack)
+- Compose test-style stack: `CACHE_PORT_HOST=50061 CACHE_HEALTH_PORT_HOST=58081 docker-compose -p tiny-cache-test-deps up -d` (isolated project name, safe to run alongside the main stack)
 - Rebuild container locally:
   - `docker-compose down -v || true`
   - `docker-compose build --no-cache`

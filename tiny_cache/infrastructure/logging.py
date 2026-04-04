@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from tiny_cache.application.request_context import request_id_var
+from tiny_cache.request_context import request_id_var
 
 
 class RequestIdFilter(logging.Filter):

@@ -6,10 +6,11 @@ import time
 from threading import Event, Lock, Thread
 from typing import Callable
 
-from tiny_cache.application.ports import (
+from tiny_cache.application.results import (
     CacheConditionalSetStatus,
     CacheSetStatus,
     CacheStatsSnapshot,
+    conditional_status_from_set_status,
 )
 from tiny_cache.domain.validation import validate_key, validate_value
 from tiny_cache.infrastructure.memory_store_cleanup import ExpiredEntryCleaner
@@ -236,17 +237,6 @@ class SqliteCacheStore:
                 return False
         return self.current_memory_bytes + required_bytes <= self.max_memory_bytes
 
-    def _conditional_status_from_set(
-        self, set_status: CacheSetStatus
-    ) -> CacheConditionalSetStatus:
-        if set_status is CacheSetStatus.OK:
-            return CacheConditionalSetStatus.STORED
-        if set_status is CacheSetStatus.VALUE_TOO_LARGE:
-            return CacheConditionalSetStatus.VALUE_TOO_LARGE
-        if set_status is CacheSetStatus.CAPACITY_EXHAUSTED:
-            return CacheConditionalSetStatus.CAPACITY_EXHAUSTED
-        raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
-
     def _store_value_locked(
         self,
         key: str,
@@ -320,7 +310,7 @@ class SqliteCacheStore:
                     self._remove_expired_entry_locked(key)
                 else:
                     return CacheConditionalSetStatus.EXISTS
-            return self._conditional_status_from_set(
+            return conditional_status_from_set_status(
                 self._store_value_locked(key, value, ttl, None)
             )
 
@@ -344,7 +334,7 @@ class SqliteCacheStore:
                 return CacheConditionalSetStatus.NOT_FOUND
             if entry.value != expected_value:
                 return CacheConditionalSetStatus.MISMATCH
-            return self._conditional_status_from_set(
+            return conditional_status_from_set_status(
                 self._store_value_locked(key, value, ttl, row)
             )
 
@@ -368,9 +358,7 @@ class SqliteCacheStore:
                 rejected_capacity=self.rejected_capacity,
                 hit_rate=self.hits / total if total > 0 else 0,
                 memory_usage_bytes=self.current_memory_bytes,
-                memory_usage_mb=round(self.current_memory_bytes / (1024 * 1024), 2),
                 max_memory_bytes=self.max_memory_bytes,
-                max_memory_mb=round(self.max_memory_bytes / (1024 * 1024), 2),
                 max_value_bytes=self.max_value_bytes,
                 max_items=self.max_items,
             )

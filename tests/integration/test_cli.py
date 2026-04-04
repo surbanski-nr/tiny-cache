@@ -69,25 +69,51 @@ async def test_cli_show_request_id_prints_response_request_id(grpc_target, capsy
 
 async def test_cli_namespace_isolates_keys(grpc_target, capsys):
     assert (
-        await run(["--target", grpc_target, "--namespace", "team-a", "set", "shared", "alpha"])
+        await run(
+            ["--target", grpc_target, "--namespace", "team-a", "set", "shared", "alpha"]
+        )
         == 0
     )
     assert capsys.readouterr().out.strip() == "OK"
 
     assert (
-        await run(["--target", grpc_target, "--namespace", "team-b", "set", "shared", "beta"])
+        await run(
+            ["--target", grpc_target, "--namespace", "team-b", "set", "shared", "beta"]
+        )
         == 0
     )
     assert capsys.readouterr().out.strip() == "OK"
 
     assert (
-        await run(["--target", grpc_target, "--namespace", "team-a", "get", "shared", "--format", "utf8"])
+        await run(
+            [
+                "--target",
+                grpc_target,
+                "--namespace",
+                "team-a",
+                "get",
+                "shared",
+                "--format",
+                "utf8",
+            ]
+        )
         == 0
     )
     assert capsys.readouterr().out.strip() == "alpha"
 
     assert (
-        await run(["--target", grpc_target, "--namespace", "team-b", "get", "shared", "--format", "utf8"])
+        await run(
+            [
+                "--target",
+                grpc_target,
+                "--namespace",
+                "team-b",
+                "get",
+                "shared",
+                "--format",
+                "utf8",
+            ]
+        )
         == 0
     )
     assert capsys.readouterr().out.strip() == "beta"
@@ -96,26 +122,24 @@ async def test_cli_namespace_isolates_keys(grpc_target, capsys):
 
 
 async def test_cli_conditional_write_commands(grpc_target, capsys):
-    assert (
-        await run(["--target", grpc_target, "set-if-absent", "key", "value1"])
-        == 0
-    )
+    assert await run(["--target", grpc_target, "set-if-absent", "key", "value1"]) == 0
     assert capsys.readouterr().out.strip() == "STORED"
 
-    assert (
-        await run(["--target", grpc_target, "set-if-absent", "key", "value2"])
-        == 1
-    )
+    assert await run(["--target", grpc_target, "set-if-absent", "key", "value2"]) == 1
     assert capsys.readouterr().out.strip() == "EXISTS"
 
     assert (
-        await run(["--target", grpc_target, "compare-and-set", "key", "wrong", "value3"])
+        await run(
+            ["--target", grpc_target, "compare-and-set", "key", "wrong", "value3"]
+        )
         == 1
     )
     assert capsys.readouterr().out.strip() == "MISMATCH"
 
     assert (
-        await run(["--target", grpc_target, "compare-and-set", "key", "value1", "value3"])
+        await run(
+            ["--target", grpc_target, "compare-and-set", "key", "value1", "value3"]
+        )
         == 0
     )
     assert capsys.readouterr().out.strip() == "STORED"

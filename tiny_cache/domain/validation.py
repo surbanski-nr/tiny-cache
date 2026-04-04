@@ -26,9 +26,7 @@ def validate_namespace(namespace: str | None) -> str | None:
     if not normalized:
         return None
     if len(normalized) > MAX_NAMESPACE_LENGTH:
-        raise ValueError(
-            f"Namespace is too long (max {MAX_NAMESPACE_LENGTH})"
-        )
+        raise ValueError(f"Namespace is too long (max {MAX_NAMESPACE_LENGTH})")
     if not _NAMESPACE_PATTERN.fullmatch(normalized):
         raise ValueError(
             "Namespace must contain only letters, numbers, dots, dashes, or underscores"

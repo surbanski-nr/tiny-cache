@@ -8,12 +8,8 @@ from tiny_cache.domain.validation import (
     validate_value,
 )
 
-from .ports import (
-    CacheConditionalSetStatus,
-    CacheSetStatus,
-    CacheStatsSnapshot,
-    CacheStorePort,
-)
+from .ports import CacheStorePort
+from .results import CacheConditionalSetStatus, CacheSetStatus, CacheStatsSnapshot
 
 
 @dataclass(frozen=True)
