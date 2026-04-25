@@ -57,6 +57,10 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
   - `max_memory_bytes` (best-effort memory accounting)
   - `max_value_bytes` (per-entry limit)
 
+### SQLite Store (`tiny_cache/infrastructure/sqlite_store.py`)
+
+`SqliteCacheStore` persists cache entries in a local SQLite database while keeping operational counters in process memory. On restart, entry count and memory usage are loaded from the database, while hits, misses, eviction counters, expired-removal counters, and rejection counters start from zero for the new process.
+
 ### gRPC Transport (`tiny_cache/transport/grpc/`)
 
 `GrpcCacheService` implements `cache.CacheService` using `grpc.aio`.

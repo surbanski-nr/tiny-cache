@@ -141,6 +141,8 @@ gRPC `Stats` returns:
 - `rejected_oversize`, `rejected_capacity`, `hit_rate`
 - `memory_usage_bytes`, `max_memory_bytes`, `max_value_bytes`, `max_items`
 
+For the SQLite backend, cache entries persist in the database across process restarts, but counters such as hits, misses, evictions, expired removals, and write rejections are process-local and reset when the service restarts. Size and memory usage are recalculated from the persisted entries during startup.
+
 ## Background TTL Cleanup
 
 `CacheStore` starts a background cleanup thread by default. It can be disabled by creating the store with `start_cleaner=False`.
