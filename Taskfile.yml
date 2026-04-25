@@ -15,7 +15,7 @@ tasks:
   clean:
     desc: Remove generated protobuf stubs
     cmds:
-      - python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
+      - uv run python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
 
   test:
     desc: Run unit, integration, and concurrency tests
