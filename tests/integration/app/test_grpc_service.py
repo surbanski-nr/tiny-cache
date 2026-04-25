@@ -360,6 +360,11 @@ async def test_stats_reports_size_hits_misses(grpc_server):
     assert stats.memory_usage_bytes == 0
     assert stats.max_memory_bytes == cache_store.max_memory_bytes
     assert stats.max_items == cache_store.max_items
+    assert stats.max_value_bytes == cache_store.max_value_bytes
+    assert stats.lru_evictions == 0
+    assert stats.expired_removals == 0
+    assert stats.rejected_oversize == 0
+    assert stats.rejected_capacity == 0
 
     response = await stub.Set(cache_pb2.CacheItem(key="key", value=b"value", ttl=0))
     assert response.status == cache_pb2.CacheStatus.OK
@@ -375,6 +380,7 @@ async def test_stats_reports_size_hits_misses(grpc_server):
     assert stats.hit_rate == pytest.approx(0.5)
     assert stats.memory_usage_bytes > 0
     assert stats.memory_usage_bytes <= stats.max_memory_bytes
+    assert stats.max_value_bytes == cache_store.max_value_bytes
 
 
 async def test_internal_error_includes_request_id(grpc_server):

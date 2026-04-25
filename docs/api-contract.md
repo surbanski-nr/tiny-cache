@@ -62,6 +62,11 @@ Methods:
   - `memory_usage_bytes: int64`
   - `max_memory_bytes: int64`
   - `max_items: int32`
+  - `max_value_bytes: int64`
+  - `lru_evictions: int32`
+  - `expired_removals: int32`
+  - `rejected_oversize: int32`
+  - `rejected_capacity: int32`
 - `Empty`
 
 ### Enums
@@ -137,7 +142,7 @@ The gRPC/HTTP APIs are the stable client contract. Cache eviction strategy and l
 - Eviction policy (LRU, LFU, TTL-only, etc.) is not part of the API contract.
 - TTL is expressed in seconds; once expired, entries should be treated as missing (`found=false`). In the current in-memory backend, an entry expires when `elapsed >= ttl`; other backends may differ in exact enforcement timing (lazy expiry, periodic cleanup, or backend-native TTL).
 - `RESOURCE_EXHAUSTED` indicates the backend could not store the entry under its current constraints (for example, per-entry size limits or exhausted capacity). The details string is for diagnostics only.
-- `CacheStats` fields such as `memory_usage_bytes` are best-effort and may not be strictly comparable across backends.
+- `CacheStats` fields such as `memory_usage_bytes`, eviction counters, and rejection counters are best-effort and may not be strictly comparable across backends.
 - The service now ships with two backend adapters behind `CacheStorePort`: the original in-memory backend and a SQLite-backed adapter selected with `CACHE_BACKEND=sqlite`.
 
 ### Request IDs
@@ -181,8 +186,8 @@ Endpoints:
 - `GET /metrics`
   - `200` Prometheus text-format metrics
 - `GET /stats`
-  - `200` JSON with the gRPC `CacheStats` fields (`size`, `hits`, `misses`, `evictions`, `hit_rate`, `memory_usage_bytes`, `max_memory_bytes`, `max_items`)
-  - Also includes HTTP-only fields: `memory_usage_mb`, `max_memory_mb`, `max_value_bytes`, `lru_evictions`, `expired_removals`, `rejected_oversize`, `rejected_capacity`, `uptime_seconds`, `active_requests`, `timestamp`
+  - `200` JSON with the gRPC `CacheStats` cache fields (`size`, `hits`, `misses`, `evictions`, `lru_evictions`, `expired_removals`, `rejected_oversize`, `rejected_capacity`, `hit_rate`, `memory_usage_bytes`, `max_memory_bytes`, `max_value_bytes`, `max_items`)
+  - Also includes HTTP-only fields: `memory_usage_mb`, `max_memory_mb`, `uptime_seconds`, `active_requests`, `timestamp`
   - This payload is intentionally not a byte-for-byte mirror of the protobuf schema
   - `503` JSON on error
 - `GET /`

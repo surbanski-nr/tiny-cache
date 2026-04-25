@@ -96,6 +96,11 @@ message CacheStats {
   int64 memory_usage_bytes = 6;
   int64 max_memory_bytes = 7;
   int32 max_items = 8;
+  int64 max_value_bytes = 9;
+  int32 lru_evictions = 10;
+  int32 expired_removals = 11;
+  int32 rejected_oversize = 12;
+  int32 rejected_capacity = 13;
 }
 
 message Empty {}

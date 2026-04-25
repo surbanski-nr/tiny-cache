@@ -137,8 +137,9 @@ Behavior:
 gRPC `Stats` returns:
 
 - `size`, `hits`, `misses`
-- `evictions`, `hit_rate`
-- `memory_usage_bytes`, `max_memory_bytes`, `max_items`
+- `evictions`, `lru_evictions`, `expired_removals`
+- `rejected_oversize`, `rejected_capacity`, `hit_rate`
+- `memory_usage_bytes`, `max_memory_bytes`, `max_value_bytes`, `max_items`
 
 ## Background TTL Cleanup
 
@@ -177,7 +178,7 @@ An `aiohttp` server is exposed on `CACHE_HEALTH_HOST:CACHE_HEALTH_PORT`:
 - `GET /health`, `GET /ready`: readiness/health JSON
 - `GET /live`: liveness JSON
 - `GET /metrics`: Prometheus text-format metrics
-- `GET /stats`: cache statistics JSON; includes all gRPC `CacheStats` fields plus HTTP-only `memory_usage_mb`, `max_memory_mb`, `max_value_bytes`, `lru_evictions`, `expired_removals`, `rejected_oversize`, `rejected_capacity`, `uptime_seconds`, `active_requests`, and `timestamp`
+- `GET /stats`: cache statistics JSON; includes all gRPC `CacheStats` cache fields plus HTTP-only `memory_usage_mb`, `max_memory_mb`, `uptime_seconds`, `active_requests`, and `timestamp`
 - `GET /`: basic service metadata JSON
 
 All responses include an `x-request-id` header (propagated from requests when present).
