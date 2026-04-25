@@ -23,6 +23,7 @@ from tiny_cache.infrastructure.memory_store_models import (
 )
 
 logger = logging.getLogger(__name__)
+CLEANER_JOIN_TIMEOUT_SECONDS = 5
 
 __all__ = [
     "CacheEntry",
@@ -286,4 +287,9 @@ class CacheStore:
     def stop(self) -> None:
         self._stop_event.set()
         if self.cleaner_thread is not None and self.cleaner_thread.is_alive():
-            self.cleaner_thread.join(timeout=5)
+            self.cleaner_thread.join(timeout=CLEANER_JOIN_TIMEOUT_SECONDS)
+            if self.cleaner_thread.is_alive():
+                logger.warning(
+                    "Cache cleanup thread did not stop within %.1f seconds",
+                    CLEANER_JOIN_TIMEOUT_SECONDS,
+                )

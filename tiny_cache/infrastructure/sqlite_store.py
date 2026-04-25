@@ -21,6 +21,7 @@ from tiny_cache.infrastructure.memory_store_models import (
 
 logger = logging.getLogger(__name__)
 SQLITE_BUSY_TIMEOUT_MS = 5000
+CLEANER_JOIN_TIMEOUT_SECONDS = 5
 
 
 class SqliteCacheStore:
@@ -387,7 +388,12 @@ class SqliteCacheStore:
     def stop(self) -> None:
         self._stop_event.set()
         if self.cleaner_thread is not None and self.cleaner_thread.is_alive():
-            self.cleaner_thread.join(timeout=5)
+            self.cleaner_thread.join(timeout=CLEANER_JOIN_TIMEOUT_SECONDS)
+            if self.cleaner_thread.is_alive():
+                logger.warning(
+                    "SQLite cache cleanup thread did not stop within %.1f seconds",
+                    CLEANER_JOIN_TIMEOUT_SECONDS,
+                )
         with self.lock:
             try:
                 self.connection.close()

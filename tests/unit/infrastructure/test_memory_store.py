@@ -1,9 +1,12 @@
+import logging
 import sys
+import threading
 import time
 from unittest.mock import patch
 
 import pytest
 
+import tiny_cache.infrastructure.memory_store as memory_store_module
 from tiny_cache.application.results import CacheConditionalSetStatus, CacheSetStatus
 from tiny_cache.domain.constraints import MAX_KEY_LENGTH
 from tiny_cache.infrastructure.memory_store import CacheStore
@@ -254,3 +257,30 @@ def test_stop_supports_disabled_cleaner() -> None:
 
     cache.stop()
     assert cache._stop_event.is_set() is True
+
+
+def test_stop_warns_when_cleaner_thread_survives_join(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    release_thread = threading.Event()
+    stuck_thread = threading.Thread(target=release_thread.wait, daemon=True)
+    stuck_thread.start()
+
+    cache = CacheStore(
+        max_items=10,
+        max_memory_mb=1,
+        cleanup_interval=1,
+        start_cleaner=False,
+    )
+    cache.cleaner_thread = stuck_thread
+    monkeypatch.setattr(memory_store_module, "CLEANER_JOIN_TIMEOUT_SECONDS", 0.01)
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            cache.stop()
+
+        assert "Cache cleanup thread did not stop" in caplog.text
+    finally:
+        release_thread.set()
+        stuck_thread.join(timeout=1)

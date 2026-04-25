@@ -1,3 +1,4 @@
+import logging
 import threading
 from collections.abc import Callable
 
@@ -7,6 +8,7 @@ import pytest_asyncio
 
 import cache_pb2
 import cache_pb2_grpc
+import tiny_cache.infrastructure.sqlite_store as sqlite_store_module
 from tiny_cache.application.results import CacheConditionalSetStatus, CacheSetStatus
 from tiny_cache.application.service import CacheApplicationService
 from tiny_cache.infrastructure.sqlite_store import (
@@ -142,6 +144,29 @@ def test_sqlite_store_configures_concurrency_pragmas(sqlite_store_factory) -> No
         assert int(busy_timeout) == SQLITE_BUSY_TIMEOUT_MS
     finally:
         store.stop()
+
+
+def test_sqlite_store_warns_when_cleaner_thread_survives_join(
+    sqlite_store_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    release_thread = threading.Event()
+    stuck_thread = threading.Thread(target=release_thread.wait, daemon=True)
+    stuck_thread.start()
+
+    store = sqlite_store_factory()
+    store.cleaner_thread = stuck_thread
+    monkeypatch.setattr(sqlite_store_module, "CLEANER_JOIN_TIMEOUT_SECONDS", 0.01)
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            store.stop()
+
+        assert "SQLite cache cleanup thread did not stop" in caplog.text
+    finally:
+        release_thread.set()
+        stuck_thread.join(timeout=1)
 
 
 @pytest.mark.asyncio
