@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from typing import Protocol
 
 import grpc
 from aiohttp import web
@@ -28,10 +29,47 @@ from tiny_cache.transport.http.health_app import create_health_app
 logger = logging.getLogger(__name__)
 
 
+class GrpcHealthServicerLike(Protocol):
+    def set(self, service: str, status: int) -> None: ...
+
+
+class GrpcServerLike(Protocol):
+    async def stop(self, grace: float | None) -> None: ...
+
+
+class HealthRunnerLike(Protocol):
+    async def cleanup(self) -> None: ...
+
+
+class CacheStoreLike(Protocol):
+    def stop(self) -> None: ...
+
+
 def _load_grpc_cache_service_class():
     from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
     return GrpcCacheService
+
+
+def _mark_grpc_not_serving(grpc_health_servicer: GrpcHealthServicerLike) -> None:
+    grpc_health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+    grpc_health_servicer.set(
+        "cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING
+    )
+
+
+async def _shutdown_started_service(
+    *,
+    grpc_health_servicer: GrpcHealthServicerLike,
+    grpc_server: GrpcServerLike,
+    health_runner: HealthRunnerLike,
+    cache_store: CacheStoreLike,
+    grace: float = 5,
+) -> None:
+    _mark_grpc_not_serving(grpc_health_servicer)
+    await grpc_server.stop(grace=grace)
+    await health_runner.cleanup()
+    cache_store.stop()
 
 
 async def serve(settings: Settings | None = None) -> None:
@@ -85,15 +123,21 @@ async def serve(settings: Settings | None = None) -> None:
         settings.health_port,
     )
 
+    shutdown_task: asyncio.Task[None] | None = None
+
     def _begin_shutdown() -> None:
+        nonlocal shutdown_task
+        if shutdown_task is not None:
+            return
         logger.info("Received shutdown signal, stopping cache service...")
-        grpc_health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-        grpc_health_servicer.set(
-            "cache.CacheService", health_pb2.HealthCheckResponse.NOT_SERVING
+        shutdown_task = asyncio.create_task(
+            _shutdown_started_service(
+                grpc_health_servicer=grpc_health_servicer,
+                grpc_server=grpc_server,
+                health_runner=health_runner,
+                cache_store=cache_store,
+            )
         )
-        cache_store.stop()
-        asyncio.create_task(grpc_server.stop(grace=5))
-        asyncio.create_task(health_runner.cleanup())
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -104,8 +148,16 @@ async def serve(settings: Settings | None = None) -> None:
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
     finally:
-        cache_store.stop()
-        await health_runner.cleanup()
+        if shutdown_task is None:
+            shutdown_task = asyncio.create_task(
+                _shutdown_started_service(
+                    grpc_health_servicer=grpc_health_servicer,
+                    grpc_server=grpc_server,
+                    health_runner=health_runner,
+                    cache_store=cache_store,
+                )
+            )
+        await shutdown_task
 
 
 def main() -> None:

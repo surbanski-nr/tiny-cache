@@ -151,3 +151,47 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(
         await main_module.serve(settings)
 
     assert getattr(fake_store, "stopped", False) is True
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drains_grpc_before_stopping_store() -> None:
+    import tiny_cache.main as main_module
+
+    events: list[str] = []
+
+    class FakeHealthServicer:
+        def set(self, service: str, status: int) -> None:
+            events.append(f"health:{service}:{status}")
+
+    class FakeGrpcServer:
+        async def stop(self, grace: float | None = None) -> None:
+            events.append(f"grpc_stop_start:{grace}")
+            events.append("grpc_stop_done")
+
+    class FakeHealthRunner:
+        async def cleanup(self) -> None:
+            events.append("http_cleanup")
+
+    class FakeStore:
+        def stop(self) -> None:
+            events.append("store_stop")
+
+    await main_module._shutdown_started_service(
+        grpc_health_servicer=FakeHealthServicer(),
+        grpc_server=FakeGrpcServer(),
+        health_runner=FakeHealthRunner(),
+        cache_store=FakeStore(),
+        grace=5,
+    )
+
+    not_serving = main_module.health_pb2.HealthCheckResponse.NOT_SERVING
+    assert events[:2] == [
+        f"health::{not_serving}",
+        f"health:cache.CacheService:{not_serving}",
+    ]
+    assert events[2:] == [
+        "grpc_stop_start:5",
+        "grpc_stop_done",
+        "http_cleanup",
+        "store_stop",
+    ]
