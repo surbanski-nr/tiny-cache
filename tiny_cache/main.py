@@ -23,22 +23,28 @@ from tiny_cache.transport.grpc.interceptors import (
     ActiveRequestsInterceptor,
     RequestIdInterceptor,
 )
-from tiny_cache.transport.grpc.servicer import GrpcCacheService
 from tiny_cache.transport.http.health_app import create_health_app
 
 logger = logging.getLogger(__name__)
+
+
+def _load_grpc_cache_service_class():
+    from tiny_cache.transport.grpc.servicer import GrpcCacheService
+
+    return GrpcCacheService
 
 
 async def serve(settings: Settings | None = None) -> None:
     settings = settings or load_settings()
 
     _, cache_pb2_grpc = load_generated_protobuf_modules()
+    grpc_cache_service_class = _load_grpc_cache_service_class()
 
     cache_store = create_cache_store(settings)
     cache_app = CacheApplicationService(cache_store)
     active_requests = ActiveRequests()
 
-    grpc_service = GrpcCacheService(cache_app)
+    grpc_service = grpc_cache_service_class(cache_app)
     grpc_server = grpc.aio.server(
         interceptors=[
             RequestIdInterceptor(),

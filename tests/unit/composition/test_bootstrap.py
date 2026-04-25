@@ -1,9 +1,12 @@
+import importlib
+import importlib.abc
+import sys
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-import tiny_cache.main as main_module
 from tiny_cache.infrastructure.config import Settings
 from tiny_cache.infrastructure.protobuf import ensure_generated_protobuf_modules
 
@@ -48,10 +51,54 @@ def test_ensure_generated_protobuf_modules_requires_generated_files(
         ensure_generated_protobuf_modules(tmp_path)
 
 
+def test_main_import_does_not_require_generated_protobuf_modules() -> None:
+    blocked_modules = {"cache_pb2", "cache_pb2_grpc"}
+    original_modules = {
+        name: sys.modules.pop(name)
+        for name in (
+            "tiny_cache.main",
+            "tiny_cache.transport.grpc.servicer",
+            "cache_pb2",
+            "cache_pb2_grpc",
+        )
+        if name in sys.modules
+    }
+
+    class BlockGeneratedProtobuf(importlib.abc.MetaPathFinder):
+        def find_spec(
+            self,
+            fullname: str,
+            path: object = None,
+            target: object = None,
+        ) -> ModuleSpec | None:
+            if fullname in blocked_modules:
+                raise ModuleNotFoundError(fullname)
+            return None
+
+    blocker = BlockGeneratedProtobuf()
+    sys.meta_path.insert(0, blocker)
+    try:
+        module = importlib.import_module("tiny_cache.main")
+    finally:
+        sys.meta_path.remove(blocker)
+        for name in (
+            "tiny_cache.main",
+            "tiny_cache.transport.grpc.servicer",
+            "cache_pb2",
+            "cache_pb2_grpc",
+        ):
+            sys.modules.pop(name, None)
+        sys.modules.update(original_modules)
+
+    assert module.main is not None
+
+
 @pytest.mark.asyncio
 async def test_serve_fails_fast_when_grpc_port_is_not_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import tiny_cache.main as main_module
+
     settings = _settings()
 
     class FakeStore:
@@ -74,7 +121,9 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(
     fake_store = FakeStore()
 
     monkeypatch.setattr(main_module, "create_cache_store", lambda _settings: fake_store)
-    monkeypatch.setattr(main_module, "GrpcCacheService", lambda app: object())
+    monkeypatch.setattr(
+        main_module, "_load_grpc_cache_service_class", lambda: lambda app: object()
+    )
 
     class FakeCachePb2Grpc:
         @staticmethod
