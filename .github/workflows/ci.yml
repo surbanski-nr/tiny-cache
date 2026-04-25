@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11.14"
+  UV_VERSION: "0.9.26"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install uv
+        run: timeout 120s python -m pip install "uv==${UV_VERSION}"
+
+      - name: Install Python
+        run: timeout 300s uv python install "${PYTHON_VERSION}"
+
+      - name: Sync dependencies
+        run: timeout 300s uv sync --python "${PYTHON_VERSION}"
+
+      - name: Generate protobuf stubs
+        run: timeout 120s uv run python -m grpc_tools.protoc -I. --python_out=. --pyi_out=. --grpc_python_out=. cache.proto
+
+      - name: Lint
+        run: timeout 120s uv run ruff check .
+
+      - name: Typecheck
+        run: timeout 180s uv run basedpyright
+
+      - name: Unit tests
+        run: timeout 180s uv run pytest tests/unit
+
+      - name: Integration tests
+        run: timeout 240s uv run pytest tests/integration
+
+      - name: Concurrency tests
+        run: timeout 180s uv run pytest tests/concurrency
