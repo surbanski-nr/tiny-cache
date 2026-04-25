@@ -82,6 +82,7 @@ Methods:
 - `Get`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
+  - Namespaced key too long after namespace prefixing: `INVALID_ARGUMENT`
   - Key missing/expired: `CacheValue(found=false)`
   - Key present: `CacheValue(found=true, value=...)`
 - `MultiGet`
@@ -92,18 +93,21 @@ Methods:
 - `Set`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
+  - Namespaced key too long after namespace prefixing: `INVALID_ARGUMENT`
   - Success: `CacheResponse(status=OK)`
   - Size-limit or capacity failure: `RESOURCE_EXHAUSTED` (details may distinguish oversize values from exhausted capacity; response message is not authoritative)
   - Unexpected errors: `INTERNAL` with generic details including a request id
 - `SetIfAbsent`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
+  - Namespaced key too long after namespace prefixing: `INVALID_ARGUMENT`
   - Missing/expired key stored successfully: `ConditionalCacheResponse(status=STORED)`
   - Existing live key: `ConditionalCacheResponse(status=EXISTS)`
   - Size-limit or capacity failure: `RESOURCE_EXHAUSTED`
 - `CompareAndSet`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
+  - Namespaced key too long after namespace prefixing: `INVALID_ARGUMENT`
   - Missing/expired key: `ConditionalCacheResponse(status=NOT_FOUND)`
   - Existing key with different current value: `ConditionalCacheResponse(status=MISMATCH)`
   - Matching current value stored successfully: `ConditionalCacheResponse(status=STORED)`
@@ -115,6 +119,7 @@ Methods:
 - `Delete`
   - Empty key: `INVALID_ARGUMENT`
   - Key too long (>256): `INVALID_ARGUMENT`
+  - Namespaced key too long after namespace prefixing: `INVALID_ARGUMENT`
   - Idempotent: always returns `CacheResponse(status=OK)` on success path (missing keys are not an error)
   - Unexpected errors: `INTERNAL` with generic details including a request id
 - `MultiDelete`
@@ -139,7 +144,7 @@ The gRPC/HTTP APIs are the stable client contract. Cache eviction strategy and l
 
 Clients may send an `x-request-id` metadata header. The server propagates it into logs, returns it in response metadata, and includes it in `INTERNAL` error details.
 
-Clients may also send an `x-cache-namespace` metadata header to isolate keys per caller without changing the protobuf schema. Namespaces are trimmed, limited to 64 characters, and may contain only letters, numbers, `.`, `_`, and `-`. Blank namespaces fall back to the shared keyspace.
+Clients may also send an `x-cache-namespace` metadata header to isolate keys per caller without changing the protobuf schema. Namespaces are trimmed, limited to 64 characters, and may contain only letters, numbers, `.`, `_`, and `-`. Blank namespaces fall back to the shared keyspace. The namespace prefix counts toward the internal 256-character storage-key limit, so a user key that is valid without a namespace can still be rejected when namespaced.
 
 ### TLS (Optional)
 

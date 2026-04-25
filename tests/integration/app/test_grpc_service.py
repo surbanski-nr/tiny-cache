@@ -9,6 +9,7 @@ import cache_pb2
 import cache_pb2_grpc
 from tiny_cache.application.ports import CacheStoreLifecyclePort
 from tiny_cache.application.service import CacheApplicationService
+from tiny_cache.domain.constraints import MAX_KEY_LENGTH
 from tiny_cache.infrastructure.memory_store import CacheStore
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
@@ -286,6 +287,25 @@ async def test_invalid_key_returns_invalid_argument(grpc_server):
 
     assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
     assert exc_info.value.details() == "Key cannot be empty"
+
+
+async def test_namespaced_key_over_storage_limit_returns_invalid_argument(
+    grpc_server,
+):
+    cache_store = CacheStore(max_items=10, max_memory_mb=1, cleanup_interval=3600)
+    stub, _service = await grpc_server(cache_store)
+    namespace = "team"
+    prefix_length = len(f"{len(namespace)}:{namespace}:")
+    too_long_key = "k" * (MAX_KEY_LENGTH - prefix_length + 1)
+
+    with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+        await stub.Set(
+            cache_pb2.CacheItem(key=too_long_key, value=b"value", ttl=0),
+            metadata=(("x-cache-namespace", namespace),),
+        )
+
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert "Namespaced key is too long" in (exc_info.value.details() or "")
 
 
 async def test_ttl_expiration(grpc_server):

@@ -69,6 +69,7 @@ Invalid values are rejected at startup with clear errors.
 - Keys are strings.
 - Empty keys are rejected (`INVALID_ARGUMENT` over gRPC).
 - Maximum key length is `256` characters.
+- With namespace metadata, the final isolated storage key also must fit within 256 characters after the namespace prefix is added. Requests that exceed that boundary fail with a namespace-aware `INVALID_ARGUMENT`.
 
 ### Values
 
@@ -167,6 +168,7 @@ The composition root (`tiny_cache/main.py`) owns the lifecycle and stops the cle
   - Accepted from `x-cache-namespace` request metadata when provided
   - Trimmed and validated to 64 safe characters (`A-Z`, `a-z`, `0-9`, `.`, `_`, `-`)
   - Applied in the application layer as an isolated storage-key prefix before calling the backend port
+  - The prefixed storage key must still fit within the 256-character key limit
 
 ### HTTP Health + Metrics API
 

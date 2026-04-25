@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from tiny_cache.domain.constraints import MAX_KEY_LENGTH
 from tiny_cache.domain.validation import (
     validate_key,
     validate_namespace,
@@ -21,7 +22,14 @@ class CacheApplicationService:
         normalized_namespace = validate_namespace(namespace)
         if normalized_namespace is None:
             return key
-        return f"{len(normalized_namespace)}:{normalized_namespace}:{key}"
+        storage_key = f"{len(normalized_namespace)}:{normalized_namespace}:{key}"
+        if len(storage_key) > MAX_KEY_LENGTH:
+            raise ValueError(
+                "Namespaced key is too long "
+                f"(max storage key length {MAX_KEY_LENGTH}; "
+                f"namespace prefix adds {len(storage_key) - len(key)} characters)"
+            )
+        return storage_key
 
     def get(self, key: str, namespace: str | None = None) -> bytes | None:
         return self.store.get(self._storage_key(key, namespace))
