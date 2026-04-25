@@ -69,11 +69,23 @@ Environment variables:
 | `CACHE_HEALTH_PORT` | 8080 | Health/metrics HTTP port |
 | `CACHE_LOG_LEVEL` | `INFO` | Log level |
 | `CACHE_LOG_FORMAT` | `text` | Log format (`text` or `json`) |
+| `CACHE_BACKEND` | `memory` | Cache backend adapter (`memory` or `sqlite`) |
+| `CACHE_SQLITE_PATH` | `tiny-cache.sqlite3` | SQLite database path when `CACHE_BACKEND=sqlite` |
 | `CACHE_TLS_ENABLED` | `false` | Enable gRPC TLS |
 | `CACHE_TLS_CERT_PATH` | (unset) | TLS certificate path |
 | `CACHE_TLS_KEY_PATH` | (unset) | TLS private key path |
 | `CACHE_TLS_REQUIRE_CLIENT_AUTH` | `false` | Require client certificates (mTLS) |
 | `CACHE_TLS_CLIENT_CA_PATH` | (unset) | Client CA bundle for mTLS |
+
+### Storage Backend
+
+The default backend is in-memory and loses entries on restart. Use SQLite when entries should persist on local disk:
+
+```bash
+CACHE_BACKEND=sqlite CACHE_SQLITE_PATH=./tiny-cache.sqlite3 uv run python -m tiny_cache
+```
+
+SQLite mode is intended for one service process per database file.
 
 ## API
 
