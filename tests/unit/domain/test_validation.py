@@ -1,6 +1,10 @@
 import pytest
 
-from tiny_cache.domain.validation import validate_key, validate_namespace, validate_value
+from tiny_cache.domain.validation import (
+    validate_key,
+    validate_namespace,
+    validate_value,
+)
 
 pytestmark = pytest.mark.unit
 

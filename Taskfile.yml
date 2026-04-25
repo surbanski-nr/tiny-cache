@@ -10,51 +10,51 @@ tasks:
       - cache_pb2_grpc.py
       - cache_pb2.pyi
     cmds:
-      - uv run python -m grpc_tools.protoc -I. --python_out=. --pyi_out=. --grpc_python_out=. cache.proto
+      - timeout 120s uv run python -m grpc_tools.protoc -I. --python_out=. --pyi_out=. --grpc_python_out=. cache.proto
 
   clean:
     desc: Remove generated protobuf stubs
     cmds:
-      - uv run python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
+      - timeout 120s uv run python -c "import os; [os.remove(p) for p in ('cache_pb2.py','cache_pb2_grpc.py','cache_pb2.pyi') if os.path.exists(p)]"
 
   test:
     desc: Run unit, integration, and concurrency tests
     deps: [gen]
     cmds:
-      - uv run pytest tests/unit
-      - uv run pytest tests/integration
-      - uv run pytest tests/concurrency
+      - timeout 180s uv run pytest tests/unit
+      - timeout 240s uv run pytest tests/integration
+      - timeout 180s uv run pytest tests/concurrency
 
   test-unit:
     desc: Run unit tests
     deps: [gen]
     cmds:
-      - uv run pytest tests/unit
+      - timeout 180s uv run pytest tests/unit
 
   test-integration:
     desc: Run integration tests
     deps: [gen]
     cmds:
-      - uv run pytest tests/integration
+      - timeout 240s uv run pytest tests/integration
 
   test-concurrency:
     desc: Run concurrency tests
     deps: [gen]
     cmds:
-      - uv run pytest tests/concurrency
+      - timeout 180s uv run pytest tests/concurrency
 
   format:
     desc: Auto-format code (ruff)
     cmds:
-      - uv run ruff format .
+      - timeout 120s uv run ruff format .
 
   lint:
     desc: Lint code (ruff)
     cmds:
-      - uv run ruff check .
+      - timeout 120s uv run ruff check .
 
   typecheck:
     desc: Typecheck code (basedpyright)
     deps: [gen]
     cmds:
-      - uv run basedpyright
+      - timeout 180s uv run basedpyright

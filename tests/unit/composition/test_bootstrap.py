@@ -127,7 +127,9 @@ async def test_serve_fails_fast_when_grpc_port_is_not_bound(
 
     class FakeCachePb2Grpc:
         @staticmethod
-        def add_CacheServiceServicer_to_server(servicer: object, server: object) -> None:
+        def add_CacheServiceServicer_to_server(
+            servicer: object, server: object
+        ) -> None:
             return None
 
     monkeypatch.setattr(

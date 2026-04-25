@@ -144,10 +144,7 @@ def test_backend_contract_conditional_writes(
             store.set_if_absent("key", b"value1", ttl=1)
             is CacheConditionalSetStatus.STORED
         )
-        assert (
-            store.set_if_absent("key", b"value2")
-            is CacheConditionalSetStatus.EXISTS
-        )
+        assert store.set_if_absent("key", b"value2") is CacheConditionalSetStatus.EXISTS
         assert (
             store.compare_and_set("key", b"wrong", b"value3")
             is CacheConditionalSetStatus.MISMATCH
@@ -161,8 +158,7 @@ def test_backend_contract_conditional_writes(
         assert store.set("expires", b"old", ttl=1) is CacheSetStatus.OK
         clock.advance(1)
         assert (
-            store.set_if_absent("expires", b"new")
-            is CacheConditionalSetStatus.STORED
+            store.set_if_absent("expires", b"new") is CacheConditionalSetStatus.STORED
         )
         assert store.get("expires") == b"new"
     finally:
