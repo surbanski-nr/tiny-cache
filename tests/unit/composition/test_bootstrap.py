@@ -197,3 +197,79 @@ async def test_shutdown_drains_grpc_before_stopping_store() -> None:
         "http_cleanup",
         "store_stop",
     ]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_store_when_grpc_stop_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import tiny_cache.main as main_module
+
+    events: list[str] = []
+
+    class FakeHealthServicer:
+        def set(self, service: str, status: int) -> None:
+            events.append(f"health:{service}:{status}")
+
+    class FailingGrpcServer:
+        async def stop(self, grace: float | None = None) -> None:
+            events.append("grpc_stop")
+            raise RuntimeError("grpc stop failed")
+
+    class FakeHealthRunner:
+        async def cleanup(self) -> None:
+            events.append("http_cleanup")
+
+    class FakeStore:
+        def stop(self) -> None:
+            events.append("store_stop")
+
+    with caplog.at_level("ERROR"):
+        await main_module._shutdown_started_service(
+            grpc_health_servicer=FakeHealthServicer(),
+            grpc_server=FailingGrpcServer(),
+            health_runner=FakeHealthRunner(),
+            cache_store=FakeStore(),
+            grace=5,
+        )
+
+    assert events[-3:] == ["grpc_stop", "http_cleanup", "store_stop"]
+    assert "Error while stopping gRPC server" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_store_when_http_cleanup_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import tiny_cache.main as main_module
+
+    events: list[str] = []
+
+    class FakeHealthServicer:
+        def set(self, service: str, status: int) -> None:
+            events.append(f"health:{service}:{status}")
+
+    class FakeGrpcServer:
+        async def stop(self, grace: float | None = None) -> None:
+            events.append("grpc_stop")
+
+    class FailingHealthRunner:
+        async def cleanup(self) -> None:
+            events.append("http_cleanup")
+            raise RuntimeError("http cleanup failed")
+
+    class FakeStore:
+        def stop(self) -> None:
+            events.append("store_stop")
+
+    with caplog.at_level("ERROR"):
+        await main_module._shutdown_started_service(
+            grpc_health_servicer=FakeHealthServicer(),
+            grpc_server=FakeGrpcServer(),
+            health_runner=FailingHealthRunner(),
+            cache_store=FakeStore(),
+            grace=5,
+        )
+
+    assert events[-3:] == ["grpc_stop", "http_cleanup", "store_stop"]
+    assert "Error while cleaning up health server" in caplog.text

@@ -67,9 +67,16 @@ async def _shutdown_started_service(
     grace: float = 5,
 ) -> None:
     _mark_grpc_not_serving(grpc_health_servicer)
-    await grpc_server.stop(grace=grace)
-    await health_runner.cleanup()
-    cache_store.stop()
+    try:
+        await grpc_server.stop(grace=grace)
+    except Exception:
+        logger.exception("Error while stopping gRPC server")
+    try:
+        await health_runner.cleanup()
+    except Exception:
+        logger.exception("Error while cleaning up health server")
+    finally:
+        cache_store.stop()
 
 
 async def serve(settings: Settings | None = None) -> None:
