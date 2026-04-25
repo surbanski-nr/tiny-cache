@@ -123,20 +123,18 @@ async def test_grpc_servicer_rejects_invalid_namespace_metadata() -> None:
 
 
 async def test_grpc_servicer_maps_resource_failures_to_resource_exhausted() -> None:
-    set_service = GrpcCacheService(
-        ResourceFailureApp(set_status=CacheSetStatus.CAPACITY_EXHAUSTED)
-    )
+    set_app = ResourceFailureApp(set_status=CacheSetStatus.CAPACITY_EXHAUSTED)
+    set_service = GrpcCacheService(set_app)
     set_context = FakeContext(metadata=[("x-request-id", "rid-set")])
     await set_service.Set(cache_pb2.CacheItem(key="k", value=b"v", ttl=0), set_context)
     assert set_context.code == grpc.StatusCode.RESOURCE_EXHAUSTED
     assert "capacity exhausted" in (set_context.details or "")
-    set_service._app.store.stop()
+    set_app.store.stop()
 
-    conditional_service = GrpcCacheService(
-        ResourceFailureApp(
-            conditional_status=CacheConditionalSetStatus.VALUE_TOO_LARGE
-        )
+    conditional_app = ResourceFailureApp(
+        conditional_status=CacheConditionalSetStatus.VALUE_TOO_LARGE
     )
+    conditional_service = GrpcCacheService(conditional_app)
     conditional_context = FakeContext(metadata=[("x-request-id", "rid-conditional")])
     await conditional_service.SetIfAbsent(
         cache_pb2.CacheItem(key="k", value=b"v", ttl=0),
@@ -144,4 +142,4 @@ async def test_grpc_servicer_maps_resource_failures_to_resource_exhausted() -> N
     )
     assert conditional_context.code == grpc.StatusCode.RESOURCE_EXHAUSTED
     assert "maximum allowed cache entry size" in (conditional_context.details or "")
-    conditional_service._app.store.stop()
+    conditional_app.store.stop()

@@ -4,83 +4,29 @@ import asyncio
 import logging
 import time
 import uuid
-from collections.abc import Iterable
 from contextvars import Token
 from dataclasses import dataclass
-from typing import Protocol
 
 from grpc import StatusCode
 
 import cache_pb2
 import cache_pb2_grpc
-from tiny_cache.application.ports import CacheStorePort
-from tiny_cache.application.results import (
-    CacheConditionalSetStatus,
-    CacheSetStatus,
-    CacheStatsSnapshot,
-    CacheWriteFailure,
-    cache_write_failure_from_conditional_status,
-    cache_write_failure_from_set_status,
-)
 from tiny_cache.domain.validation import validate_namespace
 from tiny_cache.request_context import request_id_var
+from tiny_cache.transport.grpc.batch_mapping import (
+    build_multi_delete_results,
+    build_multi_get_items,
+    build_multi_set_results,
+)
+from tiny_cache.transport.grpc.contracts import CacheApp, RpcContextLike
+from tiny_cache.transport.grpc.status_mapping import (
+    map_conditional_status,
+    map_set_status,
+)
 
 logger = logging.getLogger(__name__)
 
-VALUE_TOO_LARGE_MESSAGE = "Value exceeds maximum allowed cache entry size"
-CAPACITY_EXHAUSTED_MESSAGE = "Cache capacity exhausted and cannot accommodate new entry"
 NAMESPACE_HEADER = "x-cache-namespace"
-
-Metadata = Iterable[tuple[str, str]]
-
-
-class CacheApp(Protocol):
-    @property
-    def store(self) -> CacheStorePort: ...
-
-    def get(self, key: str, /, namespace: str | None = None) -> bytes | None: ...
-
-    def set(
-        self,
-        key: str,
-        value: bytes,
-        ttl_seconds: int,
-        /,
-        namespace: str | None = None,
-    ) -> CacheSetStatus: ...
-
-    def set_if_absent(
-        self,
-        key: str,
-        value: bytes,
-        ttl_seconds: int,
-        /,
-        namespace: str | None = None,
-    ) -> CacheConditionalSetStatus: ...
-
-    def compare_and_set(
-        self,
-        key: str,
-        expected_value: bytes,
-        value: bytes,
-        ttl_seconds: int,
-        /,
-        namespace: str | None = None,
-    ) -> CacheConditionalSetStatus: ...
-
-    def delete(self, key: str, /, namespace: str | None = None) -> bool: ...
-
-    def stats(self) -> CacheStatsSnapshot: ...
-
-
-class RpcContextLike(Protocol):
-    def peer(self) -> str: ...
-
-    def invocation_metadata(self) -> Metadata | None: ...
-
-    def set_code(self, code: StatusCode) -> None: ...
-
-    def set_details(self, details: str) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,156 +143,6 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         context.set_code(StatusCode.INTERNAL)
         context.set_details(self._internal_error_details(state))
 
-    def _set_status_details(self, set_status: CacheSetStatus) -> tuple[str, str | None]:
-        failure = cache_write_failure_from_set_status(set_status)
-        if failure is None:
-            return "OK", None
-        if failure is CacheWriteFailure.VALUE_TOO_LARGE:
-            return "VALUE_TOO_LARGE", VALUE_TOO_LARGE_MESSAGE
-        if failure is CacheWriteFailure.CAPACITY_EXHAUSTED:
-            return "CAPACITY_EXHAUSTED", CAPACITY_EXHAUSTED_MESSAGE
-        raise RuntimeError(f"Unsupported cache set status: {set_status!r}")
-
-    def _conditional_status_details(
-        self,
-        status: CacheConditionalSetStatus,
-    ) -> tuple[str, cache_pb2.ConditionalCacheStatus, str | None]:
-        if status is CacheConditionalSetStatus.STORED:
-            return "STORED", cache_pb2.STORED, None
-        if status is CacheConditionalSetStatus.EXISTS:
-            return "EXISTS", cache_pb2.EXISTS, None
-        if status is CacheConditionalSetStatus.NOT_FOUND:
-            return "NOT_FOUND", cache_pb2.NOT_FOUND, None
-        if status is CacheConditionalSetStatus.MISMATCH:
-            return "MISMATCH", cache_pb2.MISMATCH, None
-        failure = cache_write_failure_from_conditional_status(status)
-        if failure is CacheWriteFailure.VALUE_TOO_LARGE:
-            return (
-                "VALUE_TOO_LARGE",
-                cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,
-                VALUE_TOO_LARGE_MESSAGE,
-            )
-        if failure is CacheWriteFailure.CAPACITY_EXHAUSTED:
-            return (
-                "CAPACITY_EXHAUSTED",
-                cache_pb2.CONDITIONAL_CACHE_STATUS_UNSPECIFIED,
-                CAPACITY_EXHAUSTED_MESSAGE,
-            )
-        raise RuntimeError(f"Unsupported conditional cache status: {status!r}")
-
-    def _build_multi_get_items(
-        self,
-        keys: list[str],
-        request_id: str,
-        namespace: str | None,
-    ) -> list[cache_pb2.CacheLookup]:
-        results: list[cache_pb2.CacheLookup] = []
-        for key in keys:
-            try:
-                value = self._app.get(key, namespace=namespace)
-                if value is None:
-                    results.append(cache_pb2.CacheLookup(key=key, found=False))
-                    continue
-                if not isinstance(value, bytes):
-                    raise TypeError("Cache backend returned non-bytes value")
-                results.append(cache_pb2.CacheLookup(key=key, found=True, value=value))
-            except ValueError as exc:
-                results.append(
-                    cache_pb2.CacheLookup(key=key, found=False, error=str(exc))
-                )
-            except Exception:
-                logger.exception("Error in MultiGet operation for key %r", key)
-                results.append(
-                    cache_pb2.CacheLookup(
-                        key=key,
-                        found=False,
-                        error=f"Internal server error (request_id={request_id})",
-                    )
-                )
-        return results
-
-    def _build_multi_set_results(
-        self,
-        items: list[cache_pb2.CacheItem],
-        request_id: str,
-        namespace: str | None,
-    ) -> list[cache_pb2.CacheOperationResult]:
-        results: list[cache_pb2.CacheOperationResult] = []
-        for item in items:
-            try:
-                set_status = self._app.set(
-                    item.key, item.value, item.ttl, namespace=namespace
-                )
-                _log_result, error = self._set_status_details(set_status)
-                if error is None:
-                    results.append(
-                        cache_pb2.CacheOperationResult(
-                            key=item.key,
-                            status=cache_pb2.CacheStatus.OK,
-                        )
-                    )
-                    continue
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=item.key,
-                        status=cache_pb2.CacheStatus.ERROR,
-                        error=error,
-                    )
-                )
-            except ValueError as exc:
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=item.key,
-                        status=cache_pb2.CacheStatus.ERROR,
-                        error=str(exc),
-                    )
-                )
-            except Exception:
-                logger.exception("Error in MultiSet operation for key %r", item.key)
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=item.key,
-                        status=cache_pb2.CacheStatus.ERROR,
-                        error=f"Internal server error (request_id={request_id})",
-                    )
-                )
-        return results
-
-    def _build_multi_delete_results(
-        self,
-        keys: list[str],
-        request_id: str,
-        namespace: str | None,
-    ) -> list[cache_pb2.CacheOperationResult]:
-        results: list[cache_pb2.CacheOperationResult] = []
-        for key in keys:
-            try:
-                self._app.delete(key, namespace=namespace)
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=key,
-                        status=cache_pb2.CacheStatus.OK,
-                    )
-                )
-            except ValueError as exc:
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=key,
-                        status=cache_pb2.CacheStatus.ERROR,
-                        error=str(exc),
-                    )
-                )
-            except Exception:
-                logger.exception("Error in MultiDelete operation for key %r", key)
-                results.append(
-                    cache_pb2.CacheOperationResult(
-                        key=key,
-                        status=cache_pb2.CacheStatus.ERROR,
-                        error=f"Internal server error (request_id={request_id})",
-                    )
-                )
-        return results
-
     async def Get(self, request, context):
         state = self._begin_request(context)
         try:
@@ -384,7 +180,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         try:
             namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
-                self._build_multi_get_items,
+                build_multi_get_items,
+                self._app,
                 list(request.keys),
                 state.request_id,
                 namespace,
@@ -429,9 +226,9 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 self._app.set, request.key, request.value, request.ttl, namespace
             )
             duration_ms = state.duration_ms()
-            log_result, error = self._set_status_details(set_status)
+            mapped_status = map_set_status(set_status)
 
-            if error is None:
+            if mapped_status.error is None:
                 ttl_info = f" ttl={request.ttl}s" if request.ttl > 0 else ""
                 self._log_request(
                     "SET", request.key, state.client_addr, duration_ms, f"OK{ttl_info}"
@@ -439,10 +236,14 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 return cache_pb2.CacheResponse(status=cache_pb2.CacheStatus.OK)
 
             self._log_request(
-                "SET", request.key, state.client_addr, duration_ms, log_result
+                "SET",
+                request.key,
+                state.client_addr,
+                duration_ms,
+                mapped_status.log_result,
             )
             context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-            context.set_details(error)
+            context.set_details(mapped_status.error)
             return cache_pb2.CacheResponse()
         except ValueError as exc:
             self._handle_invalid_argument(context, state, "SET", request.key, exc)
@@ -470,21 +271,19 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 request.ttl,
                 namespace,
             )
-            log_result, proto_status, error = self._conditional_status_details(
-                conditional_status
-            )
+            mapped_status = map_conditional_status(conditional_status)
             self._log_request(
                 "SET_IF_ABSENT",
                 request.key,
                 state.client_addr,
                 state.duration_ms(),
-                log_result,
+                mapped_status.log_result,
             )
-            if error is not None:
+            if mapped_status.error is not None:
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-                context.set_details(error)
+                context.set_details(mapped_status.error)
                 return cache_pb2.ConditionalCacheResponse()
-            return cache_pb2.ConditionalCacheResponse(status=proto_status)
+            return cache_pb2.ConditionalCacheResponse(status=mapped_status.proto_status)
         except ValueError as exc:
             self._handle_invalid_argument(
                 context, state, "SET_IF_ABSENT", request.key, exc
@@ -514,21 +313,19 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
                 request.ttl,
                 namespace,
             )
-            log_result, proto_status, error = self._conditional_status_details(
-                conditional_status
-            )
+            mapped_status = map_conditional_status(conditional_status)
             self._log_request(
                 "COMPARE_AND_SET",
                 request.key,
                 state.client_addr,
                 state.duration_ms(),
-                log_result,
+                mapped_status.log_result,
             )
-            if error is not None:
+            if mapped_status.error is not None:
                 context.set_code(StatusCode.RESOURCE_EXHAUSTED)
-                context.set_details(error)
+                context.set_details(mapped_status.error)
                 return cache_pb2.ConditionalCacheResponse()
-            return cache_pb2.ConditionalCacheResponse(status=proto_status)
+            return cache_pb2.ConditionalCacheResponse(status=mapped_status.proto_status)
         except ValueError as exc:
             self._handle_invalid_argument(
                 context, state, "COMPARE_AND_SET", request.key, exc
@@ -551,7 +348,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         try:
             namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
-                self._build_multi_set_results,
+                build_multi_set_results,
+                self._app,
                 list(request.items),
                 state.request_id,
                 namespace,
@@ -623,7 +421,8 @@ class GrpcCacheService(cache_pb2_grpc.CacheServiceServicer):
         try:
             namespace = self._namespace_from_context(context)
             items = await asyncio.to_thread(
-                self._build_multi_delete_results,
+                build_multi_delete_results,
+                self._app,
                 list(request.keys),
                 state.request_id,
                 namespace,
