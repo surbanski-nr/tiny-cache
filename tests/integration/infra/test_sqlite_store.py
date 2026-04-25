@@ -9,7 +9,10 @@ import cache_pb2
 import cache_pb2_grpc
 from tiny_cache.application.results import CacheConditionalSetStatus, CacheSetStatus
 from tiny_cache.application.service import CacheApplicationService
-from tiny_cache.infrastructure.sqlite_store import SqliteCacheStore
+from tiny_cache.infrastructure.sqlite_store import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    SqliteCacheStore,
+)
 from tiny_cache.transport.grpc.interceptors import RequestIdInterceptor
 from tiny_cache.transport.grpc.servicer import GrpcCacheService
 
@@ -125,6 +128,18 @@ def test_sqlite_store_contract_conditional_writes(sqlite_store_factory) -> None:
             is CacheConditionalSetStatus.STORED
         )
         assert store.get("key") == b"value3"
+    finally:
+        store.stop()
+
+
+def test_sqlite_store_configures_concurrency_pragmas(sqlite_store_factory) -> None:
+    store = sqlite_store_factory()
+    try:
+        journal_mode = store.connection.execute("PRAGMA journal_mode").fetchone()[0]
+        busy_timeout = store.connection.execute("PRAGMA busy_timeout").fetchone()[0]
+
+        assert str(journal_mode).lower() == "wal"
+        assert int(busy_timeout) == SQLITE_BUSY_TIMEOUT_MS
     finally:
         store.stop()
 

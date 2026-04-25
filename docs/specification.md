@@ -143,6 +143,8 @@ gRPC `Stats` returns:
 
 For the SQLite backend, cache entries persist in the database across process restarts, but counters such as hits, misses, evictions, expired removals, and write rejections are process-local and reset when the service restarts. Size and memory usage are recalculated from the persisted entries during startup.
 
+SQLite mode uses WAL and a 5 second busy timeout, but the supported deployment shape is still one service process per database file. The store lock protects threads within one process; multi-process use requires deployment-specific testing.
+
 ## Background TTL Cleanup
 
 `CacheStore` starts a background cleanup thread by default. It can be disabled by creating the store with `start_cleaner=False`.

@@ -20,6 +20,7 @@ from tiny_cache.infrastructure.memory_store_models import (
 )
 
 logger = logging.getLogger(__name__)
+SQLITE_BUSY_TIMEOUT_MS = 5000
 
 
 class SqliteCacheStore:
@@ -48,6 +49,7 @@ class SqliteCacheStore:
         self._clock = clock or time.monotonic
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
+        self._configure_connection()
         self._initialize_schema()
         self.current_memory_bytes = self._load_current_memory_bytes()
         self.entry_count = self._load_entry_count()
@@ -79,6 +81,11 @@ class SqliteCacheStore:
     def __exit__(self, exc_type, exc, tb):
         self.stop()
         return False
+
+    def _configure_connection(self) -> None:
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.connection.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
 
     def _initialize_schema(self) -> None:
         with self.connection:

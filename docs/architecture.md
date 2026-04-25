@@ -61,6 +61,8 @@ If exposing gRPC beyond a trusted boundary, enable TLS (and consider mTLS) and r
 
 `SqliteCacheStore` persists cache entries in a local SQLite database while keeping operational counters in process memory. On restart, entry count and memory usage are loaded from the database, while hits, misses, eviction counters, expired-removal counters, and rejection counters start from zero for the new process.
 
+The adapter uses a process-local lock, SQLite WAL mode, and a 5 second busy timeout. It is intended for one service process per database file. Multiple threads in the same process are supported through the store lock; multi-process sharing should be treated as an operational risk unless it is tested for the deployment.
+
 ### gRPC Transport (`tiny_cache/transport/grpc/`)
 
 `GrpcCacheService` implements `cache.CacheService` using `grpc.aio`.
