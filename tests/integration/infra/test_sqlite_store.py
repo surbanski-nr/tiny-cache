@@ -199,3 +199,60 @@ async def test_sqlite_backend_matches_grpc_contract(grpc_server, tmp_path) -> No
     value = await stub.Get(cache_pb2.CacheKey(key="k"))
     assert value.found is True
     assert value.value == b"v2"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_backend_matches_grpc_batch_contract(
+    grpc_server, tmp_path
+) -> None:
+    store = SqliteCacheStore(
+        db_path=str(tmp_path / "cache.sqlite3"),
+        max_items=10,
+        max_memory_mb=1,
+        cleanup_interval=3600,
+        max_value_bytes=40,
+        start_cleaner=False,
+    )
+    stub = await grpc_server(store)
+
+    multi_set = await stub.MultiSet(
+        cache_pb2.MultiCacheItemRequest(
+            items=[
+                cache_pb2.CacheItem(key="ok", value=b"v", ttl=0),
+                cache_pb2.CacheItem(key="", value=b"bad", ttl=0),
+                cache_pb2.CacheItem(key="big", value=b"x" * 128, ttl=0),
+            ]
+        )
+    )
+
+    assert [item.key for item in multi_set.items] == ["ok", "", "big"]
+    assert multi_set.items[0].status == cache_pb2.CacheStatus.OK
+    assert multi_set.items[0].error == ""
+    assert multi_set.items[1].status == cache_pb2.CacheStatus.ERROR
+    assert multi_set.items[1].error == "Key cannot be empty"
+    assert multi_set.items[2].status == cache_pb2.CacheStatus.ERROR
+    assert multi_set.items[2].error == "Value exceeds maximum allowed cache entry size"
+
+    multi_get = await stub.MultiGet(
+        cache_pb2.MultiCacheKeyRequest(keys=["ok", "missing", ""])
+    )
+    assert [item.key for item in multi_get.items] == ["ok", "missing", ""]
+    assert multi_get.items[0].found is True
+    assert multi_get.items[0].value == b"v"
+    assert multi_get.items[0].error == ""
+    assert multi_get.items[1].found is False
+    assert multi_get.items[1].error == ""
+    assert multi_get.items[2].found is False
+    assert multi_get.items[2].error == "Key cannot be empty"
+
+    multi_delete = await stub.MultiDelete(
+        cache_pb2.MultiCacheKeyRequest(keys=["ok", "missing", ""])
+    )
+    assert [item.key for item in multi_delete.items] == ["ok", "missing", ""]
+    assert multi_delete.items[0].status == cache_pb2.CacheStatus.OK
+    assert multi_delete.items[1].status == cache_pb2.CacheStatus.OK
+    assert multi_delete.items[2].status == cache_pb2.CacheStatus.ERROR
+    assert multi_delete.items[2].error == "Key cannot be empty"
+
+    deleted_value = await stub.Get(cache_pb2.CacheKey(key="ok"))
+    assert deleted_value.found is False
